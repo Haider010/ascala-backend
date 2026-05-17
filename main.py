@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
 import requests
 import time
 import random
@@ -48,18 +49,17 @@ async def oauth_callback(request: Request):
         return {"error": "Failed to obtain access token."}
     
     api_key = f"ascala_{int(time.time())}_{''.join(random.choices(string.ascii_lowercase + string.digits, k=6))}"
+    data = response.json()
+    location_id = data.get("locationId")
+    company_id = data.get("companyId")
 
     # Store the API key in the database
     try:
         conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
-        data = response.json()
         
         # Check for existing connection using company_id and location_id
         # For bulk installations, location_id will be None
-        location_id = data.get("locationId")
-        company_id = data.get("companyId")
-        
         if location_id:
             cursor.execute("SELECT id from ascala_connections WHERE location_id = %s", (location_id,))
         else:
@@ -140,4 +140,4 @@ async def oauth_callback(request: Request):
         cursor.close()
         conn.close()
 
-    return {"message": "API key generated and stored successfully.", "api_key": api_key}
+    return RedirectResponse(url="https://app.gohighlevel.com", status_code=302)
