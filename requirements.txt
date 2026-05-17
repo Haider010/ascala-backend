@@ -1,4 +1,6 @@
 fastapi
+fastapi-cli
 requests
-psycopg2
+psycopg2-binary
 python-dotenv
+uvicorn
