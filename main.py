@@ -24,6 +24,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ascala")
 
+SENSITIVE_LOG_KEYS = {
+    "access_token",
+    "refresh_token",
+    "client_secret",
+    "code",
+    "refreshTokenId",
+}
+
+
+def safe_log_dict(data: dict | None) -> dict:
+    if not isinstance(data, dict):
+        return {}
+
+    safe = {}
+    for key, value in data.items():
+        if key in SENSITIVE_LOG_KEYS:
+            safe[key] = f"<redacted length={len(str(value)) if value is not None else 0}>"
+        else:
+            safe[key] = value
+    return safe
+
 app = FastAPI()
 
 app.add_middleware(
@@ -405,9 +426,23 @@ async def agent_chat(request: Request, authorization: str | None = Header(defaul
 
 @app.get("/oauth-callback")
 async def oauth_callback(request: Request):
-    print("Received OAuth callback with query parameters:", request.query_params)
+    request_id = str(uuid.uuid4())
+    started_at = time.time()
+    raw_query_params = dict(request.query_params)
+
+    logger.info(
+        "[oauth-callback:%s] Callback received. url=%s query_params=%s client_host=%s user_agent=%s referer=%s",
+        request_id,
+        str(request.url),
+        safe_log_dict(raw_query_params),
+        request.client.host if request.client else "missing",
+        request.headers.get("user-agent", "missing"),
+        request.headers.get("referer", "missing"),
+    )
+
     code = request.query_params.get("code")
     if not code:
+        logger.warning("[oauth-callback:%s] Authorization code missing from callback.", request_id)
         return {"error": "Authorization code not found in the request."}
     
     # Exchange the authorization code for an access token
@@ -422,36 +457,102 @@ async def oauth_callback(request: Request):
         "user_type": "Company"
     }
 
+    logger.info(
+        "[oauth-callback:%s] Starting token exchange. token_url=%s payload=%s",
+        request_id,
+        token_url,
+        safe_log_dict(payload),
+    )
+
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "application/json"
     }
     response = requests.post(token_url, data=payload, headers=headers)
-    print("Token exchange response:", response.status_code, response.text)
+    logger.info(
+        "[oauth-callback:%s] Token exchange completed. status_code=%s content_type=%s response_length=%s",
+        request_id,
+        response.status_code,
+        response.headers.get("content-type", "missing"),
+        len(response.text or ""),
+    )
     if response.status_code != 200:
+        logger.error(
+            "[oauth-callback:%s] Token exchange failed. status_code=%s response_body=%s",
+            request_id,
+            response.status_code,
+            response.text,
+        )
         return {"error": "Failed to obtain access token."}
     
     api_key = f"ascala_{int(time.time())}_{''.join(random.choices(string.ascii_lowercase + string.digits, k=6))}"
     data = response.json()
     location_id = data.get("locationId")
     company_id = data.get("companyId")
+    is_bulk_installation = data.get("isBulkInstallation")
+
+    logger.info(
+        "[oauth-callback:%s] Token response parsed. keys=%s safe_response=%s",
+        request_id,
+        sorted(data.keys()),
+        safe_log_dict(data),
+    )
+    logger.info(
+        "[oauth-callback:%s] Install context from token response. company_id=%s location_id=%s user_id=%s user_type=%s is_bulk_installation=%s scopes_present=%s",
+        request_id,
+        company_id or "missing",
+        location_id or "missing",
+        data.get("userId") or "missing",
+        data.get("userType") or "missing",
+        is_bulk_installation,
+        bool(data.get("scope")),
+    )
+
+    if not location_id:
+        logger.warning(
+            "[oauth-callback:%s] No locationId returned by HighLevel token response. This usually means HighLevel treated the install as company/bulk/agency-level, or the OAuth app/install flow did not provide a sub-account location context. company_id=%s is_bulk_installation=%s user_type=%s",
+            request_id,
+            company_id or "missing",
+            is_bulk_installation,
+            data.get("userType") or "missing",
+        )
 
     # Store the API key in the database
+    conn = None
+    cursor = None
     try:
+        logger.info("[oauth-callback:%s] Opening database connection for token storage.", request_id)
         conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
         
         # Check for existing connection using company_id and location_id
         # For bulk installations, location_id will be None
         if location_id:
+            logger.info(
+                "[oauth-callback:%s] Looking for existing location install. location_id=%s",
+                request_id,
+                location_id,
+            )
             cursor.execute("SELECT id from ascala_connections WHERE location_id = %s", (location_id,))
         else:
             # For bulk installations, check by company_id
+            logger.info(
+                "[oauth-callback:%s] Looking for existing company/bulk install. company_id=%s",
+                request_id,
+                company_id or "missing",
+            )
             cursor.execute("SELECT id from ascala_connections WHERE company_id = %s AND location_id IS NULL", (company_id,))
         
         result = cursor.fetchone()
+        logger.info(
+            "[oauth-callback:%s] Existing connection lookup result. found=%s connection_id=%s",
+            request_id,
+            bool(result),
+            result[0] if result else "none",
+        )
 
         if result:
+            logger.info("[oauth-callback:%s] Updating existing ascala_connections row.", request_id)
             cursor.execute("""
                 UPDATE ascala_connections
                 SET
@@ -486,6 +587,7 @@ async def oauth_callback(request: Request):
             ))
 
         else:
+            logger.info("[oauth-callback:%s] Inserting new ascala_connections row.", request_id)
             cursor.execute("""
                 INSERT INTO ascala_connections (
                     access_token,
@@ -517,10 +619,22 @@ async def oauth_callback(request: Request):
                 api_key
             ))
         conn.commit()
+        logger.info(
+            "[oauth-callback:%s] Token storage committed successfully. company_id=%s location_id=%s duration_ms=%s",
+            request_id,
+            company_id or "missing",
+            location_id or "missing",
+            int((time.time() - started_at) * 1000),
+        )
     except Exception as e:
+        logger.exception("[oauth-callback:%s] Failed while storing token response in database.", request_id)
         return {"error": str(e)}
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+            logger.info("[oauth-callback:%s] Database connection closed after token storage.", request_id)
 
+    logger.info("[oauth-callback:%s] Redirecting user to HighLevel app.", request_id)
     return RedirectResponse(url="https://app.gohighlevel.com", status_code=302)
