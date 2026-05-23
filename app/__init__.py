@@ -1,0 +1,1 @@
+"""Ascala backend application package."""
