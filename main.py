@@ -75,10 +75,6 @@ app_session_secret = (
     or client_secret
     or ghl_app_shared_secret
 )
-ghl_app_webhook_secret = (
-    os.getenv("ghl_app_webhook_secret")
-    or os.getenv("GHL_APP_WEBHOOK_SECRET")
-)
 
 AGENT_ENDPOINTS = {
     "molly": os.getenv(
@@ -197,323 +193,121 @@ def get_authorization_token(authorization: str | None) -> str:
     return authorization.split(" ", 1)[1].strip()
 
 
-def ensure_app_install_events_table(cursor) -> None:
+def ensure_installed_locations_table(cursor) -> None:
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS ascala_app_install_events (
-            id UUID PRIMARY KEY,
-            event_type TEXT,
-            install_type TEXT,
-            app_id TEXT,
-            version_id TEXT,
-            company_id TEXT,
-            location_id TEXT,
+        CREATE TABLE IF NOT EXISTS ascala_installed_locations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            connection_id UUID NOT NULL REFERENCES ascala_connections(id) ON DELETE CASCADE,
+            company_id TEXT NOT NULL,
+            location_id TEXT NOT NULL,
             user_id TEXT,
-            webhook_id TEXT,
-            payload JSONB NOT NULL,
-            received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            user_name TEXT,
+            email TEXT,
+            role TEXT,
+            context_type TEXT,
+            is_agency_owner BOOLEAN,
+            app_status TEXT,
+            version_id TEXT,
+            context_payload JSONB NOT NULL,
+            first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (company_id, location_id)
         )
     """)
 
 
-def store_app_install_event(cursor, payload: dict, request_id: str) -> None:
-    ensure_app_install_events_table(cursor)
-    cursor.execute("""
-        INSERT INTO ascala_app_install_events (
-            id,
-            event_type,
-            install_type,
-            app_id,
-            version_id,
-            company_id,
-            location_id,
-            user_id,
-            webhook_id,
-            payload
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
-        str(uuid.uuid4()),
-        payload.get("type"),
-        payload.get("installType"),
-        payload.get("appId"),
-        payload.get("versionId"),
-        payload.get("companyId"),
-        payload.get("locationId"),
-        payload.get("userId"),
-        payload.get("webhookId"),
-        json.dumps(payload),
-    ))
-    logger.info(
-        "[ghl-app-webhook:%s] App install event saved. event_type=%s install_type=%s company_id=%s location_id=%s webhook_id=%s",
-        request_id,
-        payload.get("type") or "missing",
-        payload.get("installType") or "missing",
-        payload.get("companyId") or "missing",
-        payload.get("locationId") or "missing",
-        payload.get("webhookId") or "missing",
-    )
+def upsert_installed_location(context: dict, connection: dict, request_id: str) -> None:
+    company_id = context.get("companyId") or connection.get("companyId")
+    location_id = context.get("activeLocation") or context.get("locationId") or connection.get("locationId")
 
-
-def exchange_location_token(
-    company_access_token: str,
-    company_id: str,
-    location_id: str,
-    request_id: str,
-    log_scope: str = "ghl-app-webhook",
-) -> dict | None:
-    token_url = "https://services.leadconnectorhq.com/oauth/locationToken"
-    payload = {
-        "companyId": company_id,
-        "locationId": location_id,
-    }
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Version": "2021-07-28",
-        "Authorization": f"Bearer {company_access_token}",
-    }
-
-    logger.info(
-        "[%s:%s] Starting company-to-location token exchange. token_url=%s payload=%s",
-        log_scope,
-        request_id,
-        token_url,
-        payload,
-    )
-
-    response = requests.post(token_url, data=payload, headers=headers, timeout=30)
-    logger.info(
-        "[%s:%s] Location token exchange completed. status_code=%s content_type=%s response_length=%s",
-        log_scope,
-        request_id,
-        response.status_code,
-        response.headers.get("content-type", "missing"),
-        len(response.text or ""),
-    )
-
-    if not response.ok:
-        logger.error(
-            "[%s:%s] Location token exchange failed. status_code=%s response_body=%s",
-            log_scope,
-            request_id,
-            response.status_code,
-            response.text,
-        )
-        return None
-
-    data = response.json()
-    logger.info(
-        "[%s:%s] Location token response parsed. keys=%s safe_response=%s",
-        log_scope,
-        request_id,
-        sorted(data.keys()),
-        safe_log_dict(data),
-    )
-    return data
-
-
-def upsert_location_connection(cursor, token_data: dict, request_id: str, log_scope: str = "ghl-app-webhook") -> None:
-    location_id = token_data.get("locationId")
-    company_id = token_data.get("companyId")
-
-    if not location_id:
-        raise ValueError("Location token response did not include locationId.")
-
-    api_key = generate_api_key()
-
-    cursor.execute("SELECT id FROM ascala_connections WHERE location_id = %s", (location_id,))
-    result = cursor.fetchone()
-    logger.info(
-        "[%s:%s] Location connection lookup result. found=%s connection_id=%s location_id=%s",
-        log_scope,
-        request_id,
-        bool(result),
-        result[0] if result else "none",
-        location_id,
-    )
-
-    if result:
-        cursor.execute("""
-            UPDATE ascala_connections
-            SET
-                access_token = %s,
-                refresh_token = %s,
-                token_type = %s,
-                expires_in = %s,
-                scope = %s,
-                refresh_token_id = %s,
-                company_id = %s,
-                location_id = %s,
-                user_id = %s,
-                user_type = %s,
-                is_bulk_installation = %s,
-                updated_at = NOW(),
-                api_key = %s
-            WHERE id = %s
-        """, (
-            token_data.get("access_token"),
-            token_data.get("refresh_token"),
-            token_data.get("token_type"),
-            token_data.get("expires_in"),
-            token_data.get("scope"),
-            token_data.get("refreshTokenId"),
-            company_id,
-            location_id,
-            token_data.get("userId"),
-            token_data.get("userType"),
-            token_data.get("isBulkInstallation", False),
-            api_key,
-            result[0],
-        ))
+    if not company_id or not location_id:
         logger.info(
-            "[%s:%s] Existing location connection updated. connection_id=%s company_id=%s location_id=%s",
-            log_scope,
-            request_id,
-            result[0],
-            company_id or "missing",
-            location_id,
-        )
-    else:
-        cursor.execute("""
-            INSERT INTO ascala_connections (
-                access_token,
-                refresh_token,
-                token_type,
-                expires_in,
-                scope,
-                refresh_token_id,
-                company_id,
-                location_id,
-                user_id,
-                user_type,
-                is_bulk_installation,
-                api_key
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            token_data.get("access_token"),
-            token_data.get("refresh_token"),
-            token_data.get("token_type"),
-            token_data.get("expires_in"),
-            token_data.get("scope"),
-            token_data.get("refreshTokenId"),
-            company_id,
-            location_id,
-            token_data.get("userId"),
-            token_data.get("userType"),
-            token_data.get("isBulkInstallation", False),
-            api_key,
-        ))
-        logger.info(
-            "[%s:%s] New location connection inserted. company_id=%s location_id=%s",
-            log_scope,
+            "[ghl-session:%s] Installed location not persisted. company_id=%s location_id=%s",
             request_id,
             company_id or "missing",
-            location_id,
+            location_id or "missing",
         )
+        return
 
-
-def process_pending_location_installs(company_id: str, company_access_token: str, request_id: str) -> int:
     conn = None
     cursor = None
-    processed_count = 0
-
     try:
         logger.info(
-            "[oauth-callback:%s] Checking for pending location install webhook events. company_id=%s",
+            "[ghl-session:%s] Persisting installed location from signed context. company_id=%s location_id=%s user_id=%s connection_id=%s",
             request_id,
             company_id,
+            location_id,
+            context.get("userId") or "missing",
+            connection.get("id") or "missing",
         )
         conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
-        ensure_app_install_events_table(cursor)
+        ensure_installed_locations_table(cursor)
         cursor.execute("""
-            SELECT DISTINCT location_id
-            FROM ascala_app_install_events
-            WHERE company_id = %s
-              AND location_id IS NOT NULL
-              AND UPPER(COALESCE(event_type, '')) = 'INSTALL'
-              AND LOWER(COALESCE(install_type, '')) = 'location'
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM ascala_connections
-                  WHERE ascala_connections.location_id = ascala_app_install_events.location_id
-              )
-            ORDER BY location_id
-            LIMIT 25
-        """, (company_id,))
-        pending_locations = [row[0] for row in cursor.fetchall()]
+            INSERT INTO ascala_installed_locations (
+                connection_id,
+                company_id,
+                location_id,
+                user_id,
+                user_name,
+                email,
+                role,
+                context_type,
+                is_agency_owner,
+                app_status,
+                version_id,
+                context_payload
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (company_id, location_id)
+            DO UPDATE SET
+                connection_id = EXCLUDED.connection_id,
+                user_id = EXCLUDED.user_id,
+                user_name = EXCLUDED.user_name,
+                email = EXCLUDED.email,
+                role = EXCLUDED.role,
+                context_type = EXCLUDED.context_type,
+                is_agency_owner = EXCLUDED.is_agency_owner,
+                app_status = EXCLUDED.app_status,
+                version_id = EXCLUDED.version_id,
+                context_payload = EXCLUDED.context_payload,
+                last_seen_at = NOW()
+        """, (
+            connection.get("id"),
+            company_id,
+            location_id,
+            context.get("userId"),
+            context.get("userName"),
+            context.get("email"),
+            context.get("role"),
+            context.get("type"),
+            context.get("isAgencyOwner"),
+            context.get("appStatus"),
+            context.get("versionId"),
+            json.dumps(context),
+        ))
         conn.commit()
-
         logger.info(
-            "[oauth-callback:%s] Pending location install lookup complete. count=%s locations=%s",
+            "[ghl-session:%s] Installed location persisted successfully. company_id=%s location_id=%s",
             request_id,
-            len(pending_locations),
-            pending_locations,
+            company_id,
+            location_id,
         )
     except Exception:
         if conn:
             conn.rollback()
-        logger.exception("[oauth-callback:%s] Failed while checking pending location install events.", request_id)
-        return 0
+        logger.exception(
+            "[ghl-session:%s] Failed to persist installed location. company_id=%s location_id=%s",
+            request_id,
+            company_id or "missing",
+            location_id or "missing",
+        )
     finally:
         if cursor:
             cursor.close()
         if conn:
             conn.close()
-            logger.info("[oauth-callback:%s] Database connection closed after pending install lookup.", request_id)
-
-    for pending_location_id in pending_locations:
-        location_token_data = exchange_location_token(
-            company_access_token,
-            company_id,
-            pending_location_id,
-            request_id,
-            log_scope="oauth-callback",
-        )
-        if not location_token_data:
-            logger.warning(
-                "[oauth-callback:%s] Skipping pending location after failed token exchange. company_id=%s location_id=%s",
-                request_id,
-                company_id,
-                pending_location_id,
-            )
-            continue
-
-        try:
-            conn = psycopg2.connect(database_url)
-            cursor = conn.cursor()
-            upsert_location_connection(cursor, location_token_data, request_id, log_scope="oauth-callback")
-            conn.commit()
-            processed_count += 1
-            logger.info(
-                "[oauth-callback:%s] Pending location install processed. company_id=%s location_id=%s processed_count=%s",
-                request_id,
-                company_id,
-                pending_location_id,
-                processed_count,
-            )
-        except Exception:
-            if conn:
-                conn.rollback()
-            logger.exception(
-                "[oauth-callback:%s] Failed while storing pending location token. company_id=%s location_id=%s",
-                request_id,
-                company_id,
-                pending_location_id,
-            )
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
-
-    logger.info(
-        "[oauth-callback:%s] Pending location install processing finished. processed_count=%s",
-        request_id,
-        processed_count,
-    )
-    return processed_count
+            logger.info("[ghl-session:%s] Database connection closed after installed location persistence.", request_id)
 
 
 def find_connection_for_context(context: dict, request_id: str | None = None) -> dict | None:
@@ -538,29 +332,30 @@ def find_connection_for_context(context: dict, request_id: str | None = None) ->
 
         row = None
 
-        if location_id:
+        if company_id:
             cursor.execute(
-                "SELECT id, company_id, location_id FROM ascala_connections WHERE location_id = %s",
-                (location_id,),
+                """
+                SELECT id, company_id
+                FROM ascala_connections
+                WHERE company_id = %s
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+                LIMIT 1
+                """,
+                (company_id,),
             )
             row = cursor.fetchone()
-
-            if not row and company_id:
-                logger.info(
-                    "%sNo location-specific install found. Trying company/bulk install fallback. company_id=%s active_location=%s",
-                    log_prefix,
-                    company_id,
-                    location_id,
-                )
-                cursor.execute(
-                    "SELECT id, company_id, location_id FROM ascala_connections WHERE company_id = %s AND location_id IS NULL",
-                    (company_id,),
-                )
-                row = cursor.fetchone()
-        elif company_id:
+        elif location_id:
+            ensure_installed_locations_table(cursor)
             cursor.execute(
-                "SELECT id, company_id, location_id FROM ascala_connections WHERE company_id = %s AND location_id IS NULL",
-                (company_id,),
+                """
+                SELECT c.id, c.company_id
+                FROM ascala_connections c
+                JOIN ascala_installed_locations l ON l.connection_id = c.id
+                WHERE l.location_id = %s
+                ORDER BY l.last_seen_at DESC
+                LIMIT 1
+                """,
+                (location_id,),
             )
             row = cursor.fetchone()
         else:
@@ -576,9 +371,9 @@ def find_connection_for_context(context: dict, request_id: str | None = None) ->
             )
             return None
 
-        connection = {"id": row[0], "companyId": row[1], "locationId": row[2]}
+        connection = {"id": row[0], "companyId": row[1], "locationId": location_id}
         logger.info(
-            "%sAscala install found. connection_id=%s stored_company_id=%s stored_location_id=%s",
+            "%sAscala install found. connection_id=%s stored_company_id=%s active_location_id=%s",
             log_prefix,
             connection["id"],
             connection["companyId"] or "missing",
@@ -690,6 +485,8 @@ async def create_ghl_session(request: Request):
         )
         raise HTTPException(status_code=403, detail="This GHL account has not installed Ascala.")
 
+    upsert_installed_location(context, connection, request_id)
+
     try:
         logger.info("[ghl-session:%s] Creating signed Ascala app session token.", request_id)
         session_token = create_app_session(context)
@@ -769,215 +566,6 @@ async def agent_chat(request: Request, authorization: str | None = Header(defaul
         raise HTTPException(status_code=response.status_code, detail=payload)
 
     return {"payload": payload}
-
-
-@app.post("/ghl/app-webhook")
-async def ghl_app_webhook(request: Request):
-    request_id = str(uuid.uuid4())
-    started_at = time.time()
-    user_agent = request.headers.get("user-agent", "missing")
-    event_type = "missing"
-    install_type = "missing"
-    company_id = None
-    location_id = None
-
-    logger.info(
-        "[ghl-app-webhook:%s] Webhook received. url=%s query_param_keys=%s client_host=%s user_agent=%s content_type=%s",
-        request_id,
-        str(request.url.replace(query="")),
-        sorted(request.query_params.keys()),
-        request.client.host if request.client else "missing",
-        user_agent,
-        request.headers.get("content-type", "missing"),
-    )
-
-    if ghl_app_webhook_secret:
-        provided_secret = (
-            request.query_params.get("secret")
-            or request.headers.get("x-ascala-webhook-secret")
-            or request.headers.get("x-ghl-webhook-secret")
-        )
-        if not provided_secret or not hmac.compare_digest(provided_secret, ghl_app_webhook_secret):
-            logger.warning(
-                "[ghl-app-webhook:%s] Webhook secret validation failed. has_secret=%s",
-                request_id,
-                bool(provided_secret),
-            )
-            raise HTTPException(status_code=401, detail="Invalid webhook secret.")
-        logger.info("[ghl-app-webhook:%s] Webhook secret validation passed.", request_id)
-
-    try:
-        payload = await request.json()
-    except Exception:
-        logger.exception("[ghl-app-webhook:%s] Failed to parse webhook JSON body.", request_id)
-        raise HTTPException(status_code=400, detail="Webhook body must be valid JSON.")
-
-    if not isinstance(payload, dict):
-        logger.warning("[ghl-app-webhook:%s] Invalid webhook body type. body_type=%s", request_id, type(payload).__name__)
-        raise HTTPException(status_code=400, detail="Webhook body must be a JSON object.")
-
-    event_type = payload.get("type") or "missing"
-    install_type = payload.get("installType") or "missing"
-    company_id = payload.get("companyId")
-    location_id = payload.get("locationId")
-
-    logger.info(
-        "[ghl-app-webhook:%s] Webhook payload parsed. keys=%s safe_payload=%s",
-        request_id,
-        sorted(payload.keys()),
-        safe_log_dict(payload),
-    )
-    logger.info(
-        "[ghl-app-webhook:%s] Webhook context. event_type=%s install_type=%s company_id=%s location_id=%s user_id=%s app_id=%s version_id=%s webhook_id=%s",
-        request_id,
-        event_type,
-        install_type,
-        company_id or "missing",
-        location_id or "missing",
-        payload.get("userId") or "missing",
-        payload.get("appId") or "missing",
-        payload.get("versionId") or "missing",
-        payload.get("webhookId") or "missing",
-    )
-
-    company_connection = None
-    conn = None
-    cursor = None
-
-    try:
-        logger.info("[ghl-app-webhook:%s] Opening database connection for webhook storage.", request_id)
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        store_app_install_event(cursor, payload, request_id)
-
-        if company_id:
-            cursor.execute(
-                """
-                SELECT id, access_token
-                FROM ascala_connections
-                WHERE company_id = %s AND location_id IS NULL
-                ORDER BY updated_at DESC NULLS LAST
-                LIMIT 1
-                """,
-                (company_id,),
-            )
-            company_connection = cursor.fetchone()
-            logger.info(
-                "[ghl-app-webhook:%s] Company connection lookup after webhook save. found=%s connection_id=%s",
-                request_id,
-                bool(company_connection),
-                company_connection[0] if company_connection else "none",
-            )
-        else:
-            logger.warning("[ghl-app-webhook:%s] Webhook missing companyId; cannot lookup company token.", request_id)
-
-        conn.commit()
-        logger.info("[ghl-app-webhook:%s] Webhook event committed successfully.", request_id)
-    except Exception:
-        if conn:
-            conn.rollback()
-        logger.exception("[ghl-app-webhook:%s] Failed while storing webhook event.", request_id)
-        raise HTTPException(status_code=500, detail="Unable to store webhook event.")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-            logger.info("[ghl-app-webhook:%s] Database connection closed after webhook storage.", request_id)
-
-    should_exchange_location_token = (
-        str(event_type).upper() == "INSTALL"
-        and str(install_type).lower() == "location"
-        and company_id
-        and location_id
-    )
-
-    if not should_exchange_location_token:
-        duration_ms = int((time.time() - started_at) * 1000)
-        logger.info(
-            "[ghl-app-webhook:%s] Webhook stored without location token exchange. event_type=%s install_type=%s company_id=%s location_id=%s duration_ms=%s",
-            request_id,
-            event_type,
-            install_type,
-            company_id or "missing",
-            location_id or "missing",
-            duration_ms,
-        )
-        return {
-            "status": "stored",
-            "requestId": request_id,
-            "eventType": event_type,
-            "installType": install_type,
-            "companyId": company_id,
-            "locationId": location_id,
-        }
-
-    if not company_connection or not company_connection[1]:
-        duration_ms = int((time.time() - started_at) * 1000)
-        logger.warning(
-            "[ghl-app-webhook:%s] Location install webhook stored, but no company token is available yet. company_id=%s location_id=%s duration_ms=%s",
-            request_id,
-            company_id,
-            location_id,
-            duration_ms,
-        )
-        return {
-            "status": "stored_pending_company_token",
-            "requestId": request_id,
-            "companyId": company_id,
-            "locationId": location_id,
-        }
-
-    location_token_data = exchange_location_token(company_connection[1], company_id, location_id, request_id)
-    if not location_token_data:
-        duration_ms = int((time.time() - started_at) * 1000)
-        logger.warning(
-            "[ghl-app-webhook:%s] Webhook stored, but location token exchange failed. company_id=%s location_id=%s duration_ms=%s",
-            request_id,
-            company_id,
-            location_id,
-            duration_ms,
-        )
-        return {
-            "status": "stored_location_token_exchange_failed",
-            "requestId": request_id,
-            "companyId": company_id,
-            "locationId": location_id,
-        }
-
-    conn = None
-    cursor = None
-    try:
-        logger.info("[ghl-app-webhook:%s] Opening database connection for location token storage.", request_id)
-        conn = psycopg2.connect(database_url)
-        cursor = conn.cursor()
-        upsert_location_connection(cursor, location_token_data, request_id)
-        conn.commit()
-        duration_ms = int((time.time() - started_at) * 1000)
-        logger.info(
-            "[ghl-app-webhook:%s] Location token stored successfully. company_id=%s location_id=%s duration_ms=%s",
-            request_id,
-            company_id,
-            location_id,
-            duration_ms,
-        )
-        return {
-            "status": "stored_location_token",
-            "requestId": request_id,
-            "companyId": company_id,
-            "locationId": location_id,
-        }
-    except Exception:
-        if conn:
-            conn.rollback()
-        logger.exception("[ghl-app-webhook:%s] Failed while storing location token.", request_id)
-        raise HTTPException(status_code=500, detail="Unable to store location token.")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-            logger.info("[ghl-app-webhook:%s] Database connection closed after location token storage.", request_id)
 
 
 @app.get("/oauth-callback")
@@ -1073,31 +661,34 @@ async def oauth_callback(request: Request):
             data.get("userType") or "missing",
         )
 
+    if not company_id:
+        logger.error("[oauth-callback:%s] Token response missing companyId; cannot store Ascala connection.", request_id)
+        return {"error": "Token response missing companyId."}
+
     # Store the API key in the database
     conn = None
     cursor = None
+    connection_id = None
     try:
         logger.info("[oauth-callback:%s] Opening database connection for token storage.", request_id)
         conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
         
-        # Check for existing connection using company_id and location_id
-        # For bulk installations, location_id will be None
-        if location_id:
-            logger.info(
-                "[oauth-callback:%s] Looking for existing location install. location_id=%s",
-                request_id,
-                location_id,
-            )
-            cursor.execute("SELECT id from ascala_connections WHERE location_id = %s", (location_id,))
-        else:
-            # For bulk installations, check by company_id
-            logger.info(
-                "[oauth-callback:%s] Looking for existing company/bulk install. company_id=%s",
-                request_id,
-                company_id or "missing",
-            )
-            cursor.execute("SELECT id from ascala_connections WHERE company_id = %s AND location_id IS NULL", (company_id,))
+        logger.info(
+            "[oauth-callback:%s] Looking for existing company install. company_id=%s",
+            request_id,
+            company_id,
+        )
+        cursor.execute(
+            """
+            SELECT id
+            FROM ascala_connections
+            WHERE company_id = %s
+            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+            LIMIT 1
+            """,
+            (company_id,),
+        )
         
         result = cursor.fetchone()
         logger.info(
@@ -1108,6 +699,7 @@ async def oauth_callback(request: Request):
         )
 
         if result:
+            connection_id = result[0]
             logger.info("[oauth-callback:%s] Updating existing ascala_connections row.", request_id)
             cursor.execute("""
                 UPDATE ascala_connections
@@ -1119,7 +711,6 @@ async def oauth_callback(request: Request):
                     scope = %s,
                     refresh_token_id = %s,
                     company_id = %s,
-                    location_id = %s,
                     user_id = %s,
                     user_type = %s,
                     is_bulk_installation = %s,
@@ -1134,7 +725,6 @@ async def oauth_callback(request: Request):
                 data.get("scope"),
                 data.get("refreshTokenId"),
                 data.get("companyId"),
-                data.get("locationId"),  
                 data.get("userId"),
                 data.get("userType"),
                 data.get("isBulkInstallation"),
@@ -1153,13 +743,13 @@ async def oauth_callback(request: Request):
                     scope,
                     refresh_token_id,
                     company_id,
-                    location_id,
                     user_id,
                     user_type,
                     is_bulk_installation,
                     api_key
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
             """, (
                 data.get("access_token"),
                 data.get("refresh_token"),
@@ -1168,12 +758,12 @@ async def oauth_callback(request: Request):
                 data.get("scope"),
                 data.get("refreshTokenId"),
                 data.get("companyId"),
-                data.get("locationId"),  
                 data.get("userId"),
                 data.get("userType"),
                 data.get("isBulkInstallation"),
                 api_key
             ))
+            connection_id = cursor.fetchone()[0]
         conn.commit()
         logger.info(
             "[oauth-callback:%s] Token storage committed successfully. company_id=%s location_id=%s duration_ms=%s",
@@ -1182,14 +772,6 @@ async def oauth_callback(request: Request):
             location_id or "missing",
             int((time.time() - started_at) * 1000),
         )
-
-        if company_id and data.get("access_token") and not location_id:
-            processed_count = process_pending_location_installs(company_id, data.get("access_token"), request_id)
-            logger.info(
-                "[oauth-callback:%s] Pending webhook location install processing result. processed_count=%s",
-                request_id,
-                processed_count,
-            )
     except Exception as e:
         logger.exception("[oauth-callback:%s] Failed while storing token response in database.", request_id)
         return {"error": str(e)}
@@ -1199,6 +781,24 @@ async def oauth_callback(request: Request):
         if conn:
             conn.close()
             logger.info("[oauth-callback:%s] Database connection closed after token storage.", request_id)
+
+    if location_id and connection_id:
+        upsert_installed_location(
+            {
+                "companyId": company_id,
+                "activeLocation": location_id,
+                "userId": data.get("userId"),
+                "userName": data.get("userName"),
+                "email": data.get("email"),
+                "role": data.get("role"),
+                "type": data.get("userType"),
+                "isAgencyOwner": data.get("isAgencyOwner"),
+                "appStatus": data.get("appStatus"),
+                "versionId": data.get("versionId"),
+            },
+            {"id": connection_id, "companyId": company_id, "locationId": location_id},
+            request_id,
+        )
 
     logger.info("[oauth-callback:%s] Redirecting user to HighLevel app.", request_id)
     return RedirectResponse(url="https://app.gohighlevel.com", status_code=302)
