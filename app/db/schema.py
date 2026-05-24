@@ -19,3 +19,12 @@ def ensure_installed_locations_table(cursor) -> None:
             UNIQUE (company_id, location_id)
         )
     """)
+
+
+def ensure_n8n_chat_histories_metadata(cursor) -> None:
+    cursor.execute("ALTER TABLE n8n_chat_histories ADD COLUMN IF NOT EXISTS location_id TEXT")
+    cursor.execute("ALTER TABLE n8n_chat_histories ADD COLUMN IF NOT EXISTS agent_id TEXT")
+    cursor.execute("ALTER TABLE n8n_chat_histories ADD COLUMN IF NOT EXISTS user_id TEXT")
+    cursor.execute("ALTER TABLE n8n_chat_histories ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_n8n_chat_histories_session_id ON n8n_chat_histories (session_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_n8n_chat_histories_location_agent ON n8n_chat_histories (location_id, agent_id)")

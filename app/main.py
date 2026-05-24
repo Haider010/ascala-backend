@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import agents, ghl, health, oauth
+from app.api.routes import agents, direct, ghl, health, oauth
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 
@@ -20,6 +20,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(direct.router)
     app.include_router(ghl.router)
     app.include_router(agents.router)
     app.include_router(oauth.router)
