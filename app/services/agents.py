@@ -112,8 +112,6 @@ def get_agent_history(session: dict, agent_id: str) -> dict:
     with db_connection() as conn:
         cursor = conn.cursor()
         try:
-            annotate_history_session(cursor, session, agent_id, session_id)
-            conn.commit()
             cursor.execute(
                 """
                 SELECT id, message, created_at

@@ -9,7 +9,7 @@ from app.core.security import create_app_session
 from app.db.schema import ensure_installed_locations_table
 from app.db.session import db_connection
 from app.schemas.ghl import GhlSessionResponse
-from app.services.connections import find_connection_for_context, upsert_installed_location
+from app.services.connections import find_connection_for_context
 
 router = APIRouter()
 logger = get_logger()
@@ -29,6 +29,10 @@ def _apply_env_overrides(context: dict, settings: Settings) -> dict:
         "versionId": settings.direct_dev_version_id,
     }
     return {**context, **{key: value for key, value in overrides.items() if value not in (None, "")}}
+
+
+def _env_context(settings: Settings) -> dict:
+    return _apply_env_overrides({}, settings)
 
 
 def _load_default_direct_context(request_id: str) -> dict:
@@ -99,7 +103,10 @@ async def create_direct_dev_session(request: Request):
         logger.error("[direct-session:%s] Missing app session secret environment variable.", request_id)
         raise HTTPException(status_code=500, detail="App session secret is not configured.")
 
-    context = _apply_env_overrides(_load_default_direct_context(request_id), settings)
+    context = _env_context(settings)
+    if not context.get("companyId") or not context.get("activeLocation") or not context.get("userId"):
+        logger.info("[direct-session:%s] Direct env context is incomplete. Falling back to database defaults.", request_id)
+        context = _apply_env_overrides(_load_default_direct_context(request_id), settings)
     active_location = context.get("activeLocation")
 
     logger.info(
@@ -121,7 +128,6 @@ async def create_direct_dev_session(request: Request):
     if not connection:
         raise HTTPException(status_code=403, detail="The direct dev account has not installed Ascala.")
 
-    upsert_installed_location(context, connection, request_id)
     session_token = create_app_session(context)
     storage_scope = ".".join([active_location, context.get("userId") or context.get("email") or "unknown-user"])
 
