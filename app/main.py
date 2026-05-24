@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import agents, direct, ghl, health, oauth
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
-from app.db.schema import ensure_installed_locations_table, ensure_n8n_chat_histories_metadata
+from app.db.schema import ensure_agent_outputs_tables, ensure_installed_locations_table, ensure_n8n_chat_histories_metadata
 from app.db.session import db_connection, warm_db_pool
 
 
@@ -36,6 +36,7 @@ def create_app() -> FastAPI:
                 try:
                     ensure_installed_locations_table(cursor)
                     ensure_n8n_chat_histories_metadata(cursor)
+                    ensure_agent_outputs_tables(cursor)
                     conn.commit()
                 finally:
                     cursor.close()

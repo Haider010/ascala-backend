@@ -5,6 +5,7 @@ from app.core.config import get_settings
 from app.db.schema import ensure_n8n_chat_histories_metadata
 from app.db.session import db_connection
 from app.services.connections import find_connection_for_context
+from app.services.output_processor import strip_markers_from_payload
 
 
 def get_agent_session_id(session: dict, agent_id: str, provided_session_id: str | None = None) -> str:
@@ -221,6 +222,7 @@ def forward_agent_chat(session: dict, agent_id: str, message: str, session_id: s
             cursor.close()
 
     return {
-        "payload": payload,
+        "payload": strip_markers_from_payload(payload),
+        "rawPayload": payload,
         "sessionId": agent_session_id,
     }

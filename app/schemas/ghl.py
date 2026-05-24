@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from app.schemas.agents import AgentHistoryResponse
+from app.schemas.agents import AgentHistoryResponse, AgentWorkflowStatus
 
 
 class GhlSessionRequest(BaseModel):
@@ -20,3 +20,4 @@ class GhlSessionResponse(BaseModel):
     isAgencyOwner: bool | None = None
     storageScope: str
     histories: list[AgentHistoryResponse] = Field(default_factory=list)
+    workflowStatus: AgentWorkflowStatus | None = None

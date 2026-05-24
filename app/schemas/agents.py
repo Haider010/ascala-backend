@@ -1,6 +1,21 @@
 from pydantic import BaseModel
 
 
+class AgentWorkflowStep(BaseModel):
+    id: str
+    name: str
+    role: str
+    status: str
+    locked: bool
+    completed: bool
+    available: bool
+
+
+class AgentWorkflowStatus(BaseModel):
+    currentAgentId: str
+    steps: list[AgentWorkflowStep]
+
+
 class AgentChatRequest(BaseModel):
     agentId: str
     message: str
@@ -10,6 +25,7 @@ class AgentChatRequest(BaseModel):
 class AgentChatResponse(BaseModel):
     payload: object
     sessionId: str
+    workflowStatus: AgentWorkflowStatus | None = None
 
 
 class AgentHistoryMessage(BaseModel):

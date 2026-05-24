@@ -11,6 +11,7 @@ from app.db.session import db_connection
 from app.schemas.ghl import GhlSessionResponse
 from app.services.agents import get_agent_histories
 from app.services.connections import find_connection_for_context
+from app.services.workflow import build_workflow_status
 
 router = APIRouter()
 logger = get_logger()
@@ -132,6 +133,7 @@ async def create_direct_dev_session(request: Request):
             if not connection:
                 raise HTTPException(status_code=403, detail="The direct dev account has not installed Ascala.")
             histories = get_agent_histories(context, validate_install=False, cursor=cursor)
+            workflow_status = build_workflow_status(active_location, cursor=cursor)
         finally:
             cursor.close()
 
@@ -159,4 +161,5 @@ async def create_direct_dev_session(request: Request):
         "isAgencyOwner": context.get("isAgencyOwner"),
         "storageScope": storage_scope,
         "histories": histories,
+        "workflowStatus": workflow_status,
     }

@@ -9,6 +9,7 @@ from app.core.security import create_app_session, decrypt_cryptojs_aes
 from app.schemas.ghl import GhlSessionRequest, GhlSessionResponse
 from app.services.agents import get_agent_histories
 from app.services.connections import find_connection_for_context, upsert_installed_location
+from app.services.workflow import build_workflow_status
 
 router = APIRouter()
 logger = get_logger()
@@ -93,6 +94,7 @@ async def create_ghl_session(payload: GhlSessionRequest, request: Request):
         context.get("userId") or context.get("email") or "unknown-user",
     ])
     histories = get_agent_histories({**context, "activeLocation": active_location}, validate_install=False)
+    workflow_status = build_workflow_status(active_location) if active_location else None
 
     duration_ms = int((time.time() - started_at) * 1000)
     logger.info(
@@ -118,4 +120,5 @@ async def create_ghl_session(payload: GhlSessionRequest, request: Request):
         "isAgencyOwner": context.get("isAgencyOwner"),
         "storageScope": storage_scope,
         "histories": histories,
+        "workflowStatus": workflow_status,
     }
