@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.security import create_app_session, decrypt_cryptojs_aes
 from app.schemas.ghl import GhlSessionRequest, GhlSessionResponse
+from app.services.agents import get_agent_histories
 from app.services.connections import find_connection_for_context, upsert_installed_location
 
 router = APIRouter()
@@ -91,6 +92,7 @@ async def create_ghl_session(payload: GhlSessionRequest, request: Request):
         active_location or "agency",
         context.get("userId") or context.get("email") or "unknown-user",
     ])
+    histories = get_agent_histories({**context, "activeLocation": active_location}, validate_install=False)
 
     duration_ms = int((time.time() - started_at) * 1000)
     logger.info(
@@ -115,4 +117,5 @@ async def create_ghl_session(payload: GhlSessionRequest, request: Request):
         "email": context.get("email"),
         "isAgencyOwner": context.get("isAgencyOwner"),
         "storageScope": storage_scope,
+        "histories": histories,
     }

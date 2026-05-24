@@ -99,43 +99,81 @@ def normalize_n8n_message(row_id: int, message: object, row_created_at=None) -> 
 
 
 def get_agent_history(session: dict, agent_id: str) -> dict:
-    settings = get_settings()
-    if agent_id not in settings.agent_endpoints:
-        raise HTTPException(status_code=400, detail="Unknown agent.")
+    histories = get_agent_histories(session, [agent_id])
+    return histories[0]
 
-    connection = find_connection_for_context(session)
-    if not connection:
+
+def get_agent_histories(
+    session: dict,
+    agent_ids: list[str] | None = None,
+    validate_install: bool = True,
+    cursor=None,
+) -> list[dict]:
+    settings = get_settings()
+    requested_agent_ids = agent_ids or list(settings.agent_endpoints.keys())
+    unknown_agent_ids = [agent_id for agent_id in requested_agent_ids if agent_id not in settings.agent_endpoints]
+
+    if unknown_agent_ids:
+        raise HTTPException(status_code=400, detail=f"Unknown agent: {unknown_agent_ids[0]}.")
+
+    if validate_install and not find_connection_for_context(session, cursor=cursor):
         raise HTTPException(status_code=403, detail="This app session is not linked to an installed account.")
 
-    session_id = get_agent_session_id(session, agent_id)
+    session_ids_by_agent = {
+        agent_id: get_agent_session_id(session, agent_id)
+        for agent_id in requested_agent_ids
+    }
+    agent_ids_by_session_id = {
+        session_id: agent_id
+        for agent_id, session_id in session_ids_by_agent.items()
+    }
+    rows_by_agent = {agent_id: [] for agent_id in requested_agent_ids}
 
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                """
-                SELECT id, message, created_at
-                FROM n8n_chat_histories
-                WHERE session_id = %s
-                ORDER BY id ASC
-                """,
-                (session_id,),
-            )
-            rows = cursor.fetchall()
-        finally:
-            cursor.close()
+    if cursor:
+        cursor.execute(
+            """
+            SELECT session_id, id, message, created_at
+            FROM n8n_chat_histories
+            WHERE session_id = ANY(%s)
+            ORDER BY session_id ASC, id ASC
+            """,
+            (list(agent_ids_by_session_id.keys()),),
+        )
+        rows = cursor.fetchall()
+    else:
+        with db_connection() as conn:
+            local_cursor = conn.cursor()
+            try:
+                local_cursor.execute(
+                    """
+                    SELECT session_id, id, message, created_at
+                    FROM n8n_chat_histories
+                    WHERE session_id = ANY(%s)
+                    ORDER BY session_id ASC, id ASC
+                    """,
+                    (list(agent_ids_by_session_id.keys()),),
+                )
+                rows = local_cursor.fetchall()
+            finally:
+                local_cursor.close()
 
-    messages = []
-    for row_id, message, created_at in rows:
+    for session_id, row_id, message, created_at in rows:
+        agent_id = agent_ids_by_session_id.get(session_id)
+        if not agent_id:
+            continue
+
         normalized = normalize_n8n_message(row_id, message, created_at)
         if normalized:
-            messages.append(normalized)
+            rows_by_agent[agent_id].append(normalized)
 
-    return {
-        "agentId": agent_id,
-        "sessionId": session_id,
-        "messages": messages,
-    }
+    return [
+        {
+            "agentId": agent_id,
+            "sessionId": session_ids_by_agent[agent_id],
+            "messages": rows_by_agent[agent_id],
+        }
+        for agent_id in requested_agent_ids
+    ]
 
 
 def forward_agent_chat(session: dict, agent_id: str, message: str, session_id: str | None = None) -> dict:

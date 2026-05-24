@@ -7,72 +7,93 @@ from app.db.session import db_connection
 logger = get_logger()
 
 
-def find_connection_for_context(context: dict, request_id: str | None = None) -> dict | None:
+def _find_connection_with_cursor(cursor, context: dict, log_prefix: str = "") -> dict | None:
     location_id = context.get("activeLocation") or context.get("locationId")
     company_id = context.get("companyId")
+
+    logger.info(
+        "%sLooking up Ascala connection. lookup_mode=%s location_id=%s company_id=%s",
+        log_prefix,
+        "location" if location_id else "company" if company_id else "none",
+        location_id or "missing",
+        company_id or "missing",
+    )
+
+    row = None
+    if location_id and company_id:
+        cursor.execute(
+            """
+            SELECT c.id, c.company_id
+            FROM ascala_connections c
+            JOIN ascala_installed_locations l ON l.connection_id = c.id
+            WHERE l.company_id = %s
+              AND l.location_id = %s
+            ORDER BY l.last_seen_at DESC
+            LIMIT 1
+            """,
+            (company_id, location_id),
+        )
+        row = cursor.fetchone()
+    elif location_id:
+        cursor.execute(
+            """
+            SELECT c.id, c.company_id
+            FROM ascala_connections c
+            JOIN ascala_installed_locations l ON l.connection_id = c.id
+            WHERE l.location_id = %s
+            ORDER BY l.last_seen_at DESC
+            LIMIT 1
+            """,
+            (location_id,),
+        )
+        row = cursor.fetchone()
+    elif company_id:
+        cursor.execute(
+            """
+            SELECT id, company_id
+            FROM ascala_connections
+            WHERE company_id = %s
+            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+            LIMIT 1
+            """,
+            (company_id,),
+        )
+        row = cursor.fetchone()
+    else:
+        logger.warning("%sCannot lookup install: both activeLocation/locationId and companyId are missing.", log_prefix)
+        return None
+
+    if not row:
+        logger.warning(
+            "%sNo Ascala install found. location_id=%s company_id=%s",
+            log_prefix,
+            location_id or "missing",
+            company_id or "missing",
+        )
+        return None
+
+    connection = {"id": row[0], "companyId": row[1], "locationId": location_id}
+    logger.info(
+        "%sAscala install found. connection_id=%s stored_company_id=%s active_location_id=%s",
+        log_prefix,
+        connection["id"],
+        connection["companyId"] or "missing",
+        connection["locationId"] or "missing",
+    )
+    return connection
+
+
+def find_connection_for_context(context: dict, request_id: str | None = None, cursor=None) -> dict | None:
     log_prefix = f"[ghl-session:{request_id}] " if request_id else ""
+
+    if cursor:
+        return _find_connection_with_cursor(cursor, context, log_prefix)
 
     with db_connection() as conn:
         cursor = conn.cursor()
         try:
-            logger.info(
-                "%sLooking up Ascala connection. lookup_mode=%s location_id=%s company_id=%s",
-                log_prefix,
-                "location" if location_id else "company" if company_id else "none",
-                location_id or "missing",
-                company_id or "missing",
-            )
             logger.info("%sDatabase connection opened for install lookup.", log_prefix)
-
-            row = None
-            if company_id:
-                cursor.execute(
-                    """
-                    SELECT id, company_id
-                    FROM ascala_connections
-                    WHERE company_id = %s
-                    ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-                    LIMIT 1
-                    """,
-                    (company_id,),
-                )
-                row = cursor.fetchone()
-            elif location_id:
-                ensure_installed_locations_table(cursor)
-                cursor.execute(
-                    """
-                    SELECT c.id, c.company_id
-                    FROM ascala_connections c
-                    JOIN ascala_installed_locations l ON l.connection_id = c.id
-                    WHERE l.location_id = %s
-                    ORDER BY l.last_seen_at DESC
-                    LIMIT 1
-                    """,
-                    (location_id,),
-                )
-                row = cursor.fetchone()
-            else:
-                logger.warning("%sCannot lookup install: both activeLocation/locationId and companyId are missing.", log_prefix)
-                return None
-
-            if not row:
-                logger.warning(
-                    "%sNo Ascala install found. location_id=%s company_id=%s",
-                    log_prefix,
-                    location_id or "missing",
-                    company_id or "missing",
-                )
-                return None
-
-            connection = {"id": row[0], "companyId": row[1], "locationId": location_id}
-            logger.info(
-                "%sAscala install found. connection_id=%s stored_company_id=%s active_location_id=%s",
-                log_prefix,
-                connection["id"],
-                connection["companyId"] or "missing",
-                connection["locationId"] or "missing",
-            )
-            return connection
+            return _find_connection_with_cursor(cursor, context, log_prefix)
         except Exception:
             logger.exception("%sInstall lookup failed unexpectedly.", log_prefix)
             raise

@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from app.schemas.agents import AgentHistoryResponse
+
 
 class GhlSessionRequest(BaseModel):
     encryptedData: str
@@ -17,3 +19,4 @@ class GhlSessionResponse(BaseModel):
     email: str | None = None
     isAgencyOwner: bool | None = None
     storageScope: str
+    histories: list[AgentHistoryResponse] = Field(default_factory=list)

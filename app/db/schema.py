@@ -19,6 +19,10 @@ def ensure_installed_locations_table(cursor) -> None:
             UNIQUE (company_id, location_id)
         )
     """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ascala_installed_locations_location_id
+        ON ascala_installed_locations (location_id)
+    """)
 
 
 def ensure_n8n_chat_histories_metadata(cursor) -> None:

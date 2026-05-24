@@ -9,6 +9,7 @@ from app.core.security import create_app_session
 from app.db.schema import ensure_installed_locations_table
 from app.db.session import db_connection
 from app.schemas.ghl import GhlSessionResponse
+from app.services.agents import get_agent_histories
 from app.services.connections import find_connection_for_context
 
 router = APIRouter()
@@ -124,9 +125,15 @@ async def create_direct_dev_session(request: Request):
             detail="Direct dev context is incomplete. Set DIRECT_DEV_COMPANY_ID, DIRECT_DEV_LOCATION_ID, and DIRECT_DEV_USER_ID.",
         )
 
-    connection = find_connection_for_context(context, request_id=request_id)
-    if not connection:
-        raise HTTPException(status_code=403, detail="The direct dev account has not installed Ascala.")
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            connection = find_connection_for_context(context, request_id=request_id, cursor=cursor)
+            if not connection:
+                raise HTTPException(status_code=403, detail="The direct dev account has not installed Ascala.")
+            histories = get_agent_histories(context, validate_install=False, cursor=cursor)
+        finally:
+            cursor.close()
 
     session_token = create_app_session(context)
     storage_scope = ".".join([active_location, context.get("userId") or context.get("email") or "unknown-user"])
@@ -151,4 +158,5 @@ async def create_direct_dev_session(request: Request):
         "email": context.get("email"),
         "isAgencyOwner": context.get("isAgencyOwner"),
         "storageScope": storage_scope,
+        "histories": histories,
     }

@@ -18,6 +18,8 @@ class Settings:
     molly_webhook_url: str
     brandy_webhook_url: str
     log_level: str
+    db_pool_min_connections: int = 1
+    db_pool_max_connections: int = 5
     session_ttl_seconds: int = 60 * 60 * 8
     oauth_redirect_url: str = "https://app.gohighlevel.com"
     oauth_token_url: str = "https://services.leadconnectorhq.com/oauth/token"
@@ -54,6 +56,13 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
 @lru_cache
 def get_settings() -> Settings:
     client_secret = os.getenv("client_secret")
@@ -85,6 +94,8 @@ def get_settings() -> Settings:
             "https://primary-production-b3410.up.railway.app/webhook/c65bf43d-45d3-42b5-9333-65e02bcd8835/chat",
         ),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        db_pool_min_connections=_env_int("DB_POOL_MIN_CONNECTIONS", 1),
+        db_pool_max_connections=_env_int("DB_POOL_MAX_CONNECTIONS", 5),
         direct_dev_session_enabled=_env_bool("DIRECT_DEV_SESSION_ENABLED"),
         direct_dev_company_id=os.getenv("DIRECT_DEV_COMPANY_ID"),
         direct_dev_location_id=os.getenv("DIRECT_DEV_LOCATION_ID"),
