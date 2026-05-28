@@ -5,7 +5,7 @@ from app.core.config import get_settings
 from app.db.schema import ensure_n8n_chat_histories_metadata
 from app.db.session import db_connection
 from app.services.connections import find_connection_for_context
-from app.services.output_processor import strip_markers_from_payload
+from app.services.output_processor import strip_ascala_markers, strip_markers_from_payload
 
 
 def get_agent_session_id(session: dict, agent_id: str, provided_session_id: str | None = None) -> str:
@@ -88,6 +88,10 @@ def normalize_n8n_message(row_id: int, message: object, row_created_at=None) -> 
     else:
         content = str(message)
 
+    if not content:
+        return None
+
+    content = strip_ascala_markers(content)
     if not content:
         return None
 

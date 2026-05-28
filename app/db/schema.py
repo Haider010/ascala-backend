@@ -35,7 +35,7 @@ def ensure_n8n_chat_histories_metadata(cursor) -> None:
 
 
 def ensure_agent_outputs_tables(cursor) -> None:
-    for table_name in ("molly_outputs", "brandy_outputs"):
+    for table_name in ("molly_outputs", "brandy_outputs", "sacha_outputs"):
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {table_name} (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

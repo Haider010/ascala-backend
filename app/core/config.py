@@ -17,6 +17,7 @@ class Settings:
     allowed_origins: tuple[str, ...]
     molly_webhook_url: str
     brandy_webhook_url: str
+    sacha_webhook_url: str
     log_level: str
     db_pool_min_connections: int = 1
     db_pool_max_connections: int = 5
@@ -41,6 +42,7 @@ class Settings:
         return {
             "molly": self.molly_webhook_url,
             "brandy": self.brandy_webhook_url,
+            "sacha": self.sacha_webhook_url,
         }
 
 
@@ -92,6 +94,10 @@ def get_settings() -> Settings:
         brandy_webhook_url=os.getenv(
             "brandy_webhook_url",
             "https://primary-production-b3410.up.railway.app/webhook/c65bf43d-45d3-42b5-9333-65e02bcd8835/chat",
+        ),
+        sacha_webhook_url=os.getenv(
+            "sacha_webhook_url",
+            "https://primary-production-b3410.up.railway.app/webhook/337039eb-d240-4139-965f-75ef3a625b3b/chat",
         ),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         db_pool_min_connections=_env_int("DB_POOL_MIN_CONNECTIONS", 1),

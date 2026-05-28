@@ -12,6 +12,7 @@ logger = get_logger()
 OUTPUT_TABLES = {
     "molly": "molly_outputs",
     "brandy": "brandy_outputs",
+    "sacha": "sacha_outputs",
 }
 
 OUTPUT_PATTERN = re.compile(
@@ -20,6 +21,10 @@ OUTPUT_PATTERN = re.compile(
 )
 PATCH_PATTERN = re.compile(
     r"<!--\s*ASCALA_PATCH_START\s+(?P<attrs>.*?)-->\s*(?P<body>.*?)\s*<!--\s*ASCALA_PATCH_END\s*-->",
+    re.IGNORECASE | re.DOTALL,
+)
+MARKER_LINE_PATTERN = re.compile(
+    r"<!--\s*ASCALA_(?:OUTPUT|PATCH)_(?:START|END)\b.*?-->\s*",
     re.IGNORECASE | re.DOTALL,
 )
 ATTR_PATTERN = re.compile(r'([a-zA-Z_][\w-]*)="([^"]*)"')
@@ -55,6 +60,7 @@ def parse_attrs(raw_attrs: str) -> dict:
 def clean_marker_text(text: str) -> str:
     text = OUTPUT_PATTERN.sub(lambda match: match.group("body").strip(), text)
     text = PATCH_PATTERN.sub(lambda match: match.group("body").strip(), text)
+    text = MARKER_LINE_PATTERN.sub("", text)
     return text.strip()
 
 
@@ -114,9 +120,27 @@ def target_label(target_path: str) -> str:
         "objection_content_bank": "Objection content bank",
         "platform_strategy": "Platform strategy",
         "performance_loop": "Performance loop",
+        "social_media_audit": "Social Media Audit & Continuity Analysis",
+        "strategic_content_themes": "Strategic Content Themes",
+        "recurring_content_series": "Recurring Content Series",
+        "one_off_content_opportunities": "One-Off Content Opportunities",
+        "monthly_strategic_plan": "Monthly Strategic Plan",
+        "weekly_content_plan": "Weekly Content Plan",
+        "social_media_calendar": "Social Media Calendar",
+        "campaign_launch_plans": "Campaign & Launch Plans",
+        "platform_specific_strategy": "Platform-Specific Strategy",
+        "posting_cadence_recommendation": "Posting Cadence Recommendation",
+        "cta_direction_map": "CTA Direction Map",
+        "repurposing_opportunities": "Repurposing Opportunities",
+        "production_readiness_assessment": "Production Readiness Assessment",
     }
     key = target_path.split(".")[-1]
     return labels.get(key, key.replace("_", " ").title())
+
+
+def normalize_heading_title(heading: str) -> str:
+    heading = re.sub(r"^section\s+\d+\s*:\s*", "", heading.strip(), flags=re.IGNORECASE)
+    return re.sub(r"^\d+(?:\.\d+)*[\s.):-]+", "", heading).strip()
 
 
 def set_nested_value(data: dict, target_path: str, value: Any, mode: str = "replace") -> dict:
@@ -178,7 +202,7 @@ def find_markdown_section_bounds(markdown: str, label: str) -> tuple[int, int] |
 
     for index, match in enumerate(matches):
         heading = match.group(2).strip()
-        heading_key = normalize_key(re.sub(r"^section\s+\d+\s*:\s*", "", heading, flags=re.IGNORECASE))
+        heading_key = normalize_key(normalize_heading_title(heading))
         if normalized_label not in {normalize_key(heading), heading_key}:
             continue
 
