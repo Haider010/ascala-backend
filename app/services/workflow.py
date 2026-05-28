@@ -5,7 +5,7 @@ WORKFLOW_STEPS = [
     {"id": "molly", "name": "Molly\u2122", "role": "Audience Intelligence", "table": "molly_outputs", "available": True},
     {"id": "brandy", "name": "Brandy\u2122", "role": "Brand Voice", "table": "brandy_outputs", "available": True},
     {"id": "sacha", "name": "Sacha\u2122", "role": "Strategy Director", "table": "sacha_outputs", "available": True},
-    {"id": "escouade", "name": "Escouade\u2122", "role": "AI Production Team", "table": None, "available": False},
+    {"id": "escouade", "name": "Escouade\u2122", "role": "AI Production Team", "table": None, "available": True},
     {"id": "uply", "name": "Uply\u2122", "role": "Publishing Assistant", "table": None, "available": False},
 ]
 

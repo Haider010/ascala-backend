@@ -18,6 +18,8 @@ class Settings:
     molly_webhook_url: str
     brandy_webhook_url: str
     sacha_webhook_url: str
+    openai_api_key: str | None
+    escouade_model: str
     log_level: str
     db_pool_min_connections: int = 1
     db_pool_max_connections: int = 5
@@ -99,6 +101,8 @@ def get_settings() -> Settings:
             "sacha_webhook_url",
             "https://primary-production-b3410.up.railway.app/webhook/337039eb-d240-4139-965f-75ef3a625b3b/chat",
         ),
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        escouade_model=os.getenv("ESCOUADE_MODEL", "gpt-4.1-mini"),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         db_pool_min_connections=_env_int("DB_POOL_MIN_CONNECTIONS", 1),
         db_pool_max_connections=_env_int("DB_POOL_MAX_CONNECTIONS", 5),

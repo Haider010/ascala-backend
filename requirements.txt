@@ -4,3 +4,8 @@ psycopg2-binary
 python-dotenv
 uvicorn
 pycryptodome
+SQLAlchemy
+langgraph
+langchain-openai
+langchain-core
+openai
