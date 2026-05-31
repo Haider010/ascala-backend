@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from app.core.config import get_settings
 from app.db.schema import ensure_n8n_chat_histories_metadata
 from app.db.session import db_connection
+from app.services.agent_context import build_upstream_context, format_upstream_context
 from app.services.connections import find_connection_for_context
 from app.services.output_processor import strip_ascala_markers, strip_markers_from_payload
 
@@ -195,6 +196,16 @@ def forward_agent_chat(session: dict, agent_id: str, message: str, session_id: s
         raise HTTPException(status_code=403, detail="This app session is not linked to an installed account.")
 
     agent_session_id = get_agent_session_id(session, agent_id, session_id)
+    location_id = session.get("activeLocation")
+
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            upstream_context = build_upstream_context(cursor, location_id, agent_id)
+        finally:
+            cursor.close()
+
+    upstream_context_text = format_upstream_context(upstream_context)
 
     response = requests.post(
         agent_endpoints[agent_id],
@@ -203,10 +214,13 @@ def forward_agent_chat(session: dict, agent_id: str, message: str, session_id: s
             "sessionId": agent_session_id,
             "chatInput": message,
             "message": message,
-            "locationId": session.get("activeLocation"),
+            "locationId": location_id,
             "companyId": session.get("companyId"),
             "userId": session.get("userId"),
             "userEmail": session.get("email"),
+            "upstreamContext": upstream_context,
+            "upstreamContextText": upstream_context_text,
+            "hasUpstreamContext": bool(upstream_context),
         },
         timeout=90,
     )

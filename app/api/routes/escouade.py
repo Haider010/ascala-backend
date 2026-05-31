@@ -1,3 +1,4 @@
+import json
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Response
@@ -127,7 +128,10 @@ async def export_batch_csv(batch_id: UUID, authorization: str | None = Header(de
     return Response(
         content=state["csv_content"],
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{state["csv_filename"]}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{state["csv_filename"]}"',
+            "X-Workflow-Status": json.dumps(build_workflow_status(location_id)),
+        },
     )
 
 

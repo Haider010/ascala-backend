@@ -20,6 +20,7 @@ def create_app() -> FastAPI:
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
+        expose_headers=["Content-Disposition", "X-Workflow-Status"],
     )
 
     app.include_router(health.router)

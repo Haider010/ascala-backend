@@ -6,7 +6,7 @@ WORKFLOW_STEPS = [
     {"id": "brandy", "name": "Brandy\u2122", "role": "Brand Voice", "table": "brandy_outputs", "available": True},
     {"id": "sacha", "name": "Sacha\u2122", "role": "Strategy Director", "table": "sacha_outputs", "available": True},
     {"id": "escouade", "name": "Escouade\u2122", "role": "AI Production Team", "table": None, "available": True},
-    {"id": "uply", "name": "Uply\u2122", "role": "Publishing Assistant", "table": None, "available": False},
+    {"id": "uply", "name": "Uply\u2122", "role": "Publishing Assistant", "table": None, "available": True},
 ]
 
 
@@ -31,6 +31,19 @@ def get_completed_outputs(location_id: str, cursor) -> set[str]:
         )
         if cursor.fetchone():
             completed.add(step["id"])
+
+    cursor.execute(
+        """
+        SELECT 1
+        FROM escouade_items
+        WHERE location_id = %s
+          AND status = 'exported'
+        LIMIT 1
+        """,
+        (location_id,),
+    )
+    if cursor.fetchone():
+        completed.add("escouade")
 
     return completed
 

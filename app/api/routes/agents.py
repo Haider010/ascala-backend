@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Header
 
 from app.core.security import get_authorization_token, verify_app_session
+from app.db.session import db_connection
 from app.schemas.agents import AgentChatRequest, AgentChatResponse, AgentHistoryResponse
+from app.services.account_reset import clear_account_outputs
 from app.services.agents import forward_agent_chat, get_agent_history
 from app.services.output_processor import process_agent_output
 from app.services.workflow import build_workflow_status
@@ -27,3 +29,25 @@ async def agent_chat(
 async def agent_chat_history(agentId: str, authorization: str | None = Header(default=None)):
     session = verify_app_session(get_authorization_token(authorization))
     return get_agent_history(session, agentId)
+
+
+@router.post("/account/clear-outputs")
+async def clear_outputs(authorization: str | None = Header(default=None)):
+    session = verify_app_session(get_authorization_token(authorization))
+    location_id = session.get("activeLocation") or session.get("locationId")
+    if not location_id:
+        return {"deleted": {}, "workflowStatus": None}
+
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            deleted = clear_account_outputs(cursor, location_id)
+            workflow_status = build_workflow_status(location_id, cursor=cursor)
+            conn.commit()
+        finally:
+            cursor.close()
+
+    return {
+        "deleted": deleted,
+        "workflowStatus": workflow_status,
+    }
