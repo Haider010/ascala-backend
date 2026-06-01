@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import agents, direct, escouade, ghl, health, oauth
+from app.api.routes import agents, direct, escouade, ghl, health, oauth, uply
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.db.schema import ensure_agent_outputs_tables, ensure_installed_locations_table, ensure_n8n_chat_histories_metadata
@@ -20,7 +20,7 @@ def create_app() -> FastAPI:
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
-        expose_headers=["Content-Disposition", "X-Workflow-Status"],
+        expose_headers=["Content-Disposition", "X-Workflow-Status", "X-Uply-Summary"],
     )
 
     app.include_router(health.router)
@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
     app.include_router(ghl.router)
     app.include_router(agents.router)
     app.include_router(escouade.router)
+    app.include_router(uply.router)
     app.include_router(oauth.router)
 
     @app.on_event("startup")

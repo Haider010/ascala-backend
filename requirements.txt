@@ -9,3 +9,5 @@ langgraph
 langchain-openai
 langchain-core
 openai
+openpyxl
+python-multipart
