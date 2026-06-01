@@ -403,8 +403,11 @@ async def build_uply_csv(schedule_file: UploadFile, media_zip: UploadFile, token
         raise HTTPException(status_code=400, detail=f"CSV import supports up to {MAX_POST_ROWS} posts per file.")
 
     media_files = await read_media_zip(media_zip)
-    if len(media_files) > len(post_rows):
-        raise HTTPException(status_code=400, detail="The ZIP contains more media files than post rows in the schedule.")
+    if len(media_files) != len(post_rows):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Media count must match post rows exactly. Found {len(media_files)} media files and {len(post_rows)} post rows.",
+        )
 
     _normalize_dates(rows, field_headers, post_rows)
     _normalize_booleans(field_headers, post_rows)
