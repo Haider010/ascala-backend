@@ -13,12 +13,26 @@ def ensure_installed_locations_table(cursor) -> None:
             is_agency_owner BOOLEAN,
             app_status TEXT,
             version_id TEXT,
+            location_access_token TEXT,
+            location_refresh_token TEXT,
+            location_token_type TEXT,
+            location_token_scope TEXT,
+            location_refresh_token_id TEXT,
+            location_token_expires_at TIMESTAMPTZ,
+            location_token_updated_at TIMESTAMPTZ,
             context_payload JSONB NOT NULL,
             first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (company_id, location_id)
         )
     """)
+    cursor.execute("ALTER TABLE ascala_installed_locations ADD COLUMN IF NOT EXISTS location_access_token TEXT")
+    cursor.execute("ALTER TABLE ascala_installed_locations ADD COLUMN IF NOT EXISTS location_refresh_token TEXT")
+    cursor.execute("ALTER TABLE ascala_installed_locations ADD COLUMN IF NOT EXISTS location_token_type TEXT")
+    cursor.execute("ALTER TABLE ascala_installed_locations ADD COLUMN IF NOT EXISTS location_token_scope TEXT")
+    cursor.execute("ALTER TABLE ascala_installed_locations ADD COLUMN IF NOT EXISTS location_refresh_token_id TEXT")
+    cursor.execute("ALTER TABLE ascala_installed_locations ADD COLUMN IF NOT EXISTS location_token_expires_at TIMESTAMPTZ")
+    cursor.execute("ALTER TABLE ascala_installed_locations ADD COLUMN IF NOT EXISTS location_token_updated_at TIMESTAMPTZ")
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_ascala_installed_locations_location_id
         ON ascala_installed_locations (location_id)

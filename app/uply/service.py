@@ -5,7 +5,7 @@ import mimetypes
 import re
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -16,6 +16,7 @@ from openpyxl import load_workbook
 from app.db.schema import ensure_installed_locations_table
 
 GHL_MEDIA_UPLOAD_URL = "https://services.leadconnectorhq.com/medias/upload-file"
+GHL_LOCATION_TOKEN_URL = "https://services.leadconnectorhq.com/oauth/locationToken"
 GHL_API_VERSION = "2023-02-21"
 MAX_POST_ROWS = 90
 MAX_MEDIA_FILES = 90
@@ -53,11 +54,85 @@ class PreparedCsv:
     summary: dict[str, Any]
 
 
+def _location_token_expires_at(expires_in: int | str | None) -> datetime:
+    try:
+        seconds = int(expires_in or 0)
+    except (TypeError, ValueError):
+        seconds = 0
+    if seconds <= 0:
+        seconds = 60 * 60 * 24
+    return datetime.now(timezone.utc) + timedelta(seconds=max(seconds - 300, 60))
+
+
+def _request_location_token(company_access_token: str, company_id: str, location_id: str) -> dict[str, Any]:
+    try:
+        response = requests.post(
+            GHL_LOCATION_TOKEN_URL,
+            data={"companyId": company_id, "locationId": location_id},
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Version": GHL_API_VERSION,
+                "Authorization": f"Bearer {company_access_token}",
+            },
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="Unable to request a GHL location access token.") from exc
+
+    if response.status_code >= 400:
+        detail = response.text[:500] or response.reason
+        raise HTTPException(status_code=502, detail=f"GHL location token request failed: {detail}")
+
+    try:
+        payload: dict[str, Any] = response.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="GHL location token response was not valid JSON.") from exc
+
+    if not payload.get("access_token"):
+        raise HTTPException(status_code=502, detail="GHL location token response did not include an access token.")
+
+    return payload
+
+
+def _store_location_token(cursor, installed_location_id: str, payload: dict[str, Any]) -> str:
+    cursor.execute(
+        """
+        UPDATE ascala_installed_locations
+        SET
+            location_access_token = %s,
+            location_refresh_token = %s,
+            location_token_type = %s,
+            location_token_scope = %s,
+            location_refresh_token_id = %s,
+            location_token_expires_at = %s,
+            location_token_updated_at = NOW()
+        WHERE id = %s
+        """,
+        (
+            payload.get("access_token"),
+            payload.get("refresh_token"),
+            payload.get("token_type"),
+            payload.get("scope"),
+            payload.get("refreshTokenId"),
+            _location_token_expires_at(payload.get("expires_in")),
+            installed_location_id,
+        ),
+    )
+    return payload["access_token"]
+
+
 def get_location_access_token(cursor, location_id: str) -> str:
     ensure_installed_locations_table(cursor)
     cursor.execute(
         """
-        SELECT c.access_token
+        SELECT
+            l.id,
+            l.company_id,
+            l.location_access_token,
+            l.location_token_expires_at,
+            c.access_token,
+            c.scope
         FROM ascala_installed_locations l
         JOIN ascala_connections c ON c.id = l.connection_id
         WHERE l.location_id = %s
@@ -67,10 +142,26 @@ def get_location_access_token(cursor, location_id: str) -> str:
         (location_id,),
     )
     row = cursor.fetchone()
-    token = row[0] if row else None
-    if not token:
-        raise HTTPException(status_code=409, detail="GHL access token is not available for this location.")
-    return token
+    if not row:
+        raise HTTPException(status_code=409, detail="This location is not connected to a stored HighLevel install.")
+
+    installed_location_id, company_id, location_token, expires_at, company_token, company_scope = row
+    now = datetime.now(timezone.utc)
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if location_token and expires_at and expires_at > now + timedelta(minutes=5):
+        return location_token
+
+    if not company_token:
+        raise HTTPException(status_code=409, detail="GHL company access token is not available for this location.")
+    if "oauth.write" not in (company_scope or ""):
+        raise HTTPException(
+            status_code=409,
+            detail="The HighLevel app install is missing oauth.write. Reinstall the app after adding the scope.",
+        )
+
+    payload = _request_location_token(company_token, company_id, location_id)
+    return _store_location_token(cursor, installed_location_id, payload)
 
 
 def _clean_upload_filename(filename: str | None) -> str:

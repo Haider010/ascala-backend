@@ -26,6 +26,7 @@ async def prepare_social_planner_csv(
         cursor = conn.cursor()
         try:
             token = get_location_access_token(cursor, location_id)
+            conn.commit()
         finally:
             cursor.close()
 
