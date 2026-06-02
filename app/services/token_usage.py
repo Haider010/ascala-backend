@@ -42,15 +42,26 @@ def extract_token_usage(response: Any) -> dict[str, Any] | None:
         or token_usage.get("total_tokens")
         or token_usage.get("total")
     )
+    input_token_details = _metadata_dict(usage_metadata.get("input_token_details") or usage_metadata.get("prompt_tokens_details"))
+    prompt_token_details = _metadata_dict(token_usage.get("prompt_tokens_details") or token_usage.get("input_token_details"))
+    cached_input_tokens = (
+        input_token_details.get("cache_read")
+        or input_token_details.get("cached_tokens")
+        or prompt_token_details.get("cached_tokens")
+        or prompt_token_details.get("cache_read")
+    )
 
     normalized = {
         "input_tokens": _to_int(input_tokens),
+        "cached_input_tokens": _to_int(cached_input_tokens),
         "output_tokens": _to_int(output_tokens),
         "total_tokens": _to_int(total_tokens),
         "usage_metadata": usage_metadata,
         "response_metadata_usage": token_usage,
         "response_id": response_metadata.get("id") or response_metadata.get("response_id"),
     }
+    normalized["cached_input_tokens"] = min(normalized["cached_input_tokens"], normalized["input_tokens"])
+    normalized["fresh_input_tokens"] = max(normalized["input_tokens"] - normalized["cached_input_tokens"], 0)
     if not normalized["total_tokens"]:
         normalized["total_tokens"] = normalized["input_tokens"] + normalized["output_tokens"]
 
@@ -102,18 +113,22 @@ def record_token_usage(
                     agent_id,
                     model,
                     input_tokens,
+                    fresh_input_tokens,
+                    cached_input_tokens,
                     output_tokens,
                     total_tokens,
                     call_count,
                     last_usage_metadata,
                     updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s::jsonb, NOW())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s::jsonb, NOW())
                 ON CONFLICT (usage_month, location_id, user_id, agent_id)
                 DO UPDATE SET
                     company_id = COALESCE(EXCLUDED.company_id, ascala_token_usage_monthly.company_id),
                     model = EXCLUDED.model,
                     input_tokens = ascala_token_usage_monthly.input_tokens + EXCLUDED.input_tokens,
+                    fresh_input_tokens = ascala_token_usage_monthly.fresh_input_tokens + EXCLUDED.fresh_input_tokens,
+                    cached_input_tokens = ascala_token_usage_monthly.cached_input_tokens + EXCLUDED.cached_input_tokens,
                     output_tokens = ascala_token_usage_monthly.output_tokens + EXCLUDED.output_tokens,
                     total_tokens = ascala_token_usage_monthly.total_tokens + EXCLUDED.total_tokens,
                     call_count = ascala_token_usage_monthly.call_count + 1,
@@ -128,6 +143,8 @@ def record_token_usage(
                     agent_id,
                     model,
                     usage["input_tokens"],
+                    usage["fresh_input_tokens"],
+                    usage["cached_input_tokens"],
                     usage["output_tokens"],
                     usage["total_tokens"],
                     json.dumps(last_usage_metadata, default=str),
@@ -143,6 +160,8 @@ def record_token_usage(
 def empty_totals() -> dict[str, int]:
     return {
         "inputTokens": 0,
+        "freshInputTokens": 0,
+        "cachedInputTokens": 0,
         "outputTokens": 0,
         "totalTokens": 0,
         "callCount": 0,
@@ -171,6 +190,8 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
                 """
                 SELECT
                     COALESCE(SUM(input_tokens), 0),
+                    COALESCE(SUM(fresh_input_tokens), 0),
+                    COALESCE(SUM(cached_input_tokens), 0),
                     COALESCE(SUM(output_tokens), 0),
                     COALESCE(SUM(total_tokens), 0),
                     COALESCE(SUM(call_count), 0)
@@ -187,6 +208,8 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
                 """
                 SELECT
                     COALESCE(SUM(input_tokens), 0),
+                    COALESCE(SUM(fresh_input_tokens), 0),
+                    COALESCE(SUM(cached_input_tokens), 0),
                     COALESCE(SUM(output_tokens), 0),
                     COALESCE(SUM(total_tokens), 0),
                     COALESCE(SUM(call_count), 0)
@@ -203,6 +226,8 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
                 SELECT
                     usage_month,
                     COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                    COALESCE(SUM(fresh_input_tokens), 0) AS fresh_input_tokens,
+                    COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
                     COALESCE(SUM(output_tokens), 0) AS output_tokens,
                     COALESCE(SUM(total_tokens), 0) AS total_tokens,
                     COALESCE(SUM(call_count), 0) AS call_count
@@ -223,6 +248,8 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
                     model,
                     usage_month,
                     input_tokens,
+                    fresh_input_tokens,
+                    cached_input_tokens,
                     output_tokens,
                     total_tokens,
                     call_count,
@@ -241,9 +268,11 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
     def totals(row) -> dict[str, int]:
         return {
             "inputTokens": _to_int(row[0]) if row else 0,
-            "outputTokens": _to_int(row[1]) if row else 0,
-            "totalTokens": _to_int(row[2]) if row else 0,
-            "callCount": _to_int(row[3]) if row else 0,
+            "freshInputTokens": _to_int(row[1]) if row else 0,
+            "cachedInputTokens": _to_int(row[2]) if row else 0,
+            "outputTokens": _to_int(row[3]) if row else 0,
+            "totalTokens": _to_int(row[4]) if row else 0,
+            "callCount": _to_int(row[5]) if row else 0,
         }
 
     return {
@@ -256,9 +285,11 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
             {
                 "month": row[0].isoformat()[:7] if hasattr(row[0], "isoformat") else str(row[0])[:7],
                 "inputTokens": _to_int(row[1]),
-                "outputTokens": _to_int(row[2]),
-                "totalTokens": _to_int(row[3]),
-                "callCount": _to_int(row[4]),
+                "freshInputTokens": _to_int(row[2]),
+                "cachedInputTokens": _to_int(row[3]),
+                "outputTokens": _to_int(row[4]),
+                "totalTokens": _to_int(row[5]),
+                "callCount": _to_int(row[6]),
             }
             for row in month_rows
         ],
@@ -268,10 +299,12 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
                 "model": row[1],
                 "month": row[2].isoformat()[:7] if hasattr(row[2], "isoformat") else str(row[2])[:7],
                 "inputTokens": _to_int(row[3]),
-                "outputTokens": _to_int(row[4]),
-                "totalTokens": _to_int(row[5]),
-                "callCount": _to_int(row[6]),
-                "updatedAt": row[7].isoformat() if hasattr(row[7], "isoformat") else row[7],
+                "freshInputTokens": _to_int(row[4]),
+                "cachedInputTokens": _to_int(row[5]),
+                "outputTokens": _to_int(row[6]),
+                "totalTokens": _to_int(row[7]),
+                "callCount": _to_int(row[8]),
+                "updatedAt": row[9].isoformat() if hasattr(row[9], "isoformat") else row[9],
             }
             for row in agent_rows
         ],

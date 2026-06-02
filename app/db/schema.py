@@ -86,6 +86,8 @@ def ensure_token_usage_table(cursor) -> None:
             agent_id TEXT NOT NULL,
             model TEXT,
             input_tokens BIGINT NOT NULL DEFAULT 0,
+            fresh_input_tokens BIGINT NOT NULL DEFAULT 0,
+            cached_input_tokens BIGINT NOT NULL DEFAULT 0,
             output_tokens BIGINT NOT NULL DEFAULT 0,
             total_tokens BIGINT NOT NULL DEFAULT 0,
             call_count BIGINT NOT NULL DEFAULT 0,
@@ -97,6 +99,15 @@ def ensure_token_usage_table(cursor) -> None:
     """)
     cursor.execute("ALTER TABLE ascala_token_usage_monthly ADD COLUMN IF NOT EXISTS company_id TEXT")
     cursor.execute("ALTER TABLE ascala_token_usage_monthly ADD COLUMN IF NOT EXISTS model TEXT")
+    cursor.execute("ALTER TABLE ascala_token_usage_monthly ADD COLUMN IF NOT EXISTS fresh_input_tokens BIGINT NOT NULL DEFAULT 0")
+    cursor.execute("ALTER TABLE ascala_token_usage_monthly ADD COLUMN IF NOT EXISTS cached_input_tokens BIGINT NOT NULL DEFAULT 0")
     cursor.execute("ALTER TABLE ascala_token_usage_monthly ADD COLUMN IF NOT EXISTS last_usage_metadata JSONB NOT NULL DEFAULT '{}'::jsonb")
+    cursor.execute("""
+        UPDATE ascala_token_usage_monthly
+        SET fresh_input_tokens = input_tokens
+        WHERE input_tokens > 0
+          AND fresh_input_tokens = 0
+          AND cached_input_tokens = 0
+    """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ascala_token_usage_monthly_location_month ON ascala_token_usage_monthly (location_id, usage_month)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ascala_token_usage_monthly_user_month ON ascala_token_usage_monthly (user_id, usage_month)")
