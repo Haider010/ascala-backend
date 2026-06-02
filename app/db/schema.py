@@ -73,3 +73,30 @@ def ensure_agent_outputs_tables(cursor) -> None:
         cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS source_message_id TEXT")
         cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
         cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{table_name}_location_id_unique ON {table_name} (location_id)")
+
+
+def ensure_token_usage_table(cursor) -> None:
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ascala_token_usage_monthly (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            usage_month DATE NOT NULL,
+            company_id TEXT,
+            location_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            model TEXT,
+            input_tokens BIGINT NOT NULL DEFAULT 0,
+            output_tokens BIGINT NOT NULL DEFAULT 0,
+            total_tokens BIGINT NOT NULL DEFAULT 0,
+            call_count BIGINT NOT NULL DEFAULT 0,
+            last_usage_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (usage_month, location_id, user_id, agent_id)
+        )
+    """)
+    cursor.execute("ALTER TABLE ascala_token_usage_monthly ADD COLUMN IF NOT EXISTS company_id TEXT")
+    cursor.execute("ALTER TABLE ascala_token_usage_monthly ADD COLUMN IF NOT EXISTS model TEXT")
+    cursor.execute("ALTER TABLE ascala_token_usage_monthly ADD COLUMN IF NOT EXISTS last_usage_metadata JSONB NOT NULL DEFAULT '{}'::jsonb")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ascala_token_usage_monthly_location_month ON ascala_token_usage_monthly (location_id, usage_month)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ascala_token_usage_monthly_user_month ON ascala_token_usage_monthly (user_id, usage_month)")

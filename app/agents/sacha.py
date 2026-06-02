@@ -17,6 +17,7 @@ from app.core.config import get_settings
 from app.db.session import db_connection
 from app.services.agent_context import build_upstream_context, format_upstream_context
 from app.services.output_processor import strip_markers_from_payload
+from app.services.token_usage import record_token_usage
 
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "sacha.md"
 
@@ -94,6 +95,12 @@ def call_model(state: SachaState) -> SachaState:
     settings = get_settings()
     response = build_chat_llm(settings.sacha_model).invoke(
         build_messages(system_parts(state), state.get("history", []), state["user_message"])
+    )
+    record_token_usage(
+        session=state["session"],
+        agent_id="sacha",
+        model=settings.sacha_model,
+        response=response,
     )
     state["reply"] = response.content if isinstance(response.content, str) else str(response.content)
     return state

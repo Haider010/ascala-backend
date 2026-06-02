@@ -56,6 +56,11 @@ def generate_batch(state: EscouadeState) -> EscouadeState:
         batch = service.generate_batch(
             db,
             state["location_id"],
+            {
+                "activeLocation": state["location_id"],
+                "companyId": state.get("company_id"),
+                "userId": state.get("user_id"),
+            },
             state["member_type"],
             state.get("batch_name"),
             state.get("source_type"),
@@ -75,6 +80,11 @@ def revise_items(state: EscouadeState) -> EscouadeState:
         batch, _locked = service.revise_items(
             db,
             state["location_id"],
+            {
+                "activeLocation": state["location_id"],
+                "companyId": state.get("company_id"),
+                "userId": state.get("user_id"),
+            },
             UUID(state["batch_id"]),
             [UUID(item_id) for item_id in state.get("editable_item_ids", [])],
             state["current_instruction"],

@@ -14,6 +14,7 @@ from app.db.session import db_connection
 from app.services.agents import get_agent_histories, get_agent_session_id
 from app.services.connections import find_connection_for_context
 from app.services.output_processor import strip_ascala_markers, strip_markers_from_payload
+from app.services.token_usage import record_token_usage
 from app.services.web_crawler import CrawlerConfig, crawl_website, validate_public_url
 
 URL_PATTERN = re.compile(r"https?://[^\s<>()\"']+", re.IGNORECASE)
@@ -168,7 +169,14 @@ def build_messages(state: MollyState) -> list:
 
 
 def call_model(state: MollyState) -> MollyState:
+    settings = get_settings()
     response = build_llm().invoke(build_messages(state))
+    record_token_usage(
+        session=state["session"],
+        agent_id="molly",
+        model=settings.molly_model,
+        response=response,
+    )
     content = response.content if isinstance(response.content, str) else str(response.content)
     state["reply"] = content
     return state

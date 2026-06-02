@@ -31,6 +31,8 @@ async def generate_batch(payload: BatchGenerateRequest, authorization: str | Non
     state = escouade_graph.invoke({
         "action": "generate",
         "location_id": location_id,
+        "company_id": session_context.get("companyId"),
+        "user_id": session_context.get("userId"),
         "member_type": payload.member_type,
         "batch_name": payload.batch_name,
         "source_type": payload.source_type,
@@ -60,6 +62,11 @@ async def command_batch(payload: CommandRequest, authorization: str | None = Hea
             payload.batch_id,
             payload.message,
             payload.conversation_history,
+            {
+                "activeLocation": location_id,
+                "companyId": session_context.get("companyId"),
+                "userId": session_context.get("userId"),
+            },
         )
         return {
             "batch": serialize_batch(batch),
@@ -75,6 +82,8 @@ async def revise_batch(payload: ReviseRequest, authorization: str | None = Heade
     state = escouade_graph.invoke({
         "action": "revise",
         "location_id": location_id,
+        "company_id": session_context.get("companyId"),
+        "user_id": session_context.get("userId"),
         "batch_id": str(payload.batch_id),
         "item_ids": [str(item_id) for item_id in payload.item_ids],
         "conversation_history": payload.conversation_history,
@@ -123,6 +132,8 @@ async def export_batch_csv(batch_id: UUID, authorization: str | None = Header(de
     state = escouade_graph.invoke({
         "action": "export",
         "location_id": location_id,
+        "company_id": session_context.get("companyId"),
+        "user_id": session_context.get("userId"),
         "batch_id": str(batch_id),
     })
     return Response(

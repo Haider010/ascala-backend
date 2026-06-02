@@ -15,6 +15,7 @@ from app.escouade.csv import build_items_csv
 from app.escouade.models import EscouadeBatch, EscouadeItem
 from app.escouade.schemas.common import EscouadeBatchFilters
 from app.escouade.schemas.member_outputs import MEMBER_ITEM_SCHEMAS, MEMBER_OUTPUT_SCHEMAS
+from app.services.token_usage import record_token_usage
 
 PROMPT_DIR = Path(__file__).with_name("prompts")
 EDITABLE_STATUSES = {"draft", "needs_revision"}
@@ -292,15 +293,41 @@ def call_structured_generation(
     instruction: str,
     conversation_history: list[dict[str, Any]],
     current_items: list[dict[str, Any]] | None = None,
+    usage_context: dict[str, Any] | None = None,
+    usage_metadata: dict[str, Any] | None = None,
 ):
     schema = MEMBER_OUTPUT_SCHEMAS[member_type]
-    llm = build_llm().with_structured_output(schema)
+    settings = get_settings()
+    llm = build_llm().with_structured_output(schema, include_raw=True)
     messages = build_generation_messages(member_type, production_brief, strategy_review, filters, instruction, conversation_history, current_items)
 
     last_error = None
-    for _ in range(2):
+    for attempt in range(2):
         try:
-            return llm.invoke(messages)
+            result = llm.invoke(messages)
+            raw_response = result.get("raw") if isinstance(result, dict) else None
+            if raw_response is not None:
+                record_token_usage(
+                    session=usage_context,
+                    agent_id="escouade",
+                    model=settings.escouade_model,
+                    response=raw_response,
+                    metadata={
+                        "member_type": member_type,
+                        "attempt": attempt + 1,
+                        **(usage_metadata or {}),
+                    },
+                )
+
+            if isinstance(result, dict):
+                if result.get("parsing_error"):
+                    raise result["parsing_error"]
+                parsed = result.get("parsed")
+                if parsed is None:
+                    raise ValueError("Structured output parser returned no parsed payload.")
+                return parsed
+
+            return result
         except Exception as exc:
             last_error = exc
             messages.append(
@@ -318,6 +345,7 @@ def call_structured_generation(
 def generate_batch(
     db: Session,
     location_id: str,
+    usage_context: dict[str, Any] | None,
     member_type: str,
     batch_name: str | None,
     source_type: str | None,
@@ -361,6 +389,8 @@ def generate_batch(
         filters_data,
         instruction,
         conversation_history,
+        usage_context=usage_context,
+        usage_metadata={"operation": "generate"},
     )
     item_schema = MEMBER_ITEM_SCHEMAS[member_type]
 
@@ -405,6 +435,7 @@ def filter_editable_items(db: Session, location_id: str, batch_id: UUID | str, i
 def revise_items(
     db: Session,
     location_id: str,
+    usage_context: dict[str, Any] | None,
     batch_id: UUID,
     item_ids: list[UUID],
     instruction: str,
@@ -431,6 +462,8 @@ def revise_items(
         instruction,
         conversation_history,
         current_items=current_items,
+        usage_context=usage_context,
+        usage_metadata={"operation": "revise", "batch_id": str(batch_id)},
     )
 
     item_schema = MEMBER_ITEM_SCHEMAS[batch.member_type]
@@ -538,6 +571,7 @@ def handle_command(
     batch_id: UUID,
     message: str,
     conversation_history: list[dict[str, Any]],
+    usage_context: dict[str, Any] | None = None,
 ) -> tuple[EscouadeBatch, str, str | None]:
     batch = get_batch_or_404(db, batch_id, location_id)
     lower = message.lower()
@@ -565,7 +599,7 @@ def handle_command(
     if any(term in lower for term in revise_terms):
         if not item_ids:
             raise HTTPException(status_code=400, detail="Tell Escouade which draft item IDs to revise, or say all drafts.")
-        batch, _locked = revise_items(db, location_id, batch_id, item_ids, message, conversation_history)
+        batch, _locked = revise_items(db, location_id, usage_context, batch_id, item_ids, message, conversation_history)
         return batch, batch.quality_note or "Editable items revised and saved.", None
 
     raise HTTPException(

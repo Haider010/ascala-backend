@@ -4,6 +4,8 @@ from typing import Any, Literal, TypedDict
 class EscouadeState(TypedDict, total=False):
     action: Literal["generate", "revise", "approve", "reopen", "export", "fetch"]
     location_id: str
+    company_id: str | None
+    user_id: str | None
     batch_id: str
     member_type: str
     filters: dict[str, Any]
