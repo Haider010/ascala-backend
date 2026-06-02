@@ -191,6 +191,21 @@ def forward_agent_chat(session: dict, agent_id: str, message: str, session_id: s
     if not message:
         raise HTTPException(status_code=400, detail="message is required.")
 
+    if agent_id == "molly":
+        from app.agents.molly import run_molly_chat
+
+        return run_molly_chat(session, message, session_id)
+
+    if agent_id == "brandy":
+        from app.agents.brandy import run_brandy_chat
+
+        return run_brandy_chat(session, message, session_id)
+
+    if agent_id == "sacha":
+        from app.agents.sacha import run_sacha_chat
+
+        return run_sacha_chat(session, message, session_id)
+
     connection = find_connection_for_context(session)
     if not connection:
         raise HTTPException(status_code=403, detail="This app session is not linked to an installed account.")

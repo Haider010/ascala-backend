@@ -11,3 +11,5 @@ langchain-core
 openai
 openpyxl
 python-multipart
+beautifulsoup4
+selenium
