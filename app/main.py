@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import agents, direct, escouade, ghl, health, oauth, uply, usage
+from app.api.routes import agents, brandboard, direct, escouade, ghl, health, oauth, uply, usage
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.db.schema import (
     ensure_agent_outputs_tables,
+    ensure_brandboard_outputs_table,
     ensure_installed_locations_table,
     ensure_n8n_chat_histories_metadata,
     ensure_token_usage_table,
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(direct.router)
     app.include_router(ghl.router)
     app.include_router(agents.router)
+    app.include_router(brandboard.router)
     app.include_router(escouade.router)
     app.include_router(uply.router)
     app.include_router(usage.router)
@@ -47,6 +49,7 @@ def create_app() -> FastAPI:
                     ensure_installed_locations_table(cursor)
                     ensure_n8n_chat_histories_metadata(cursor)
                     ensure_agent_outputs_tables(cursor)
+                    ensure_brandboard_outputs_table(cursor)
                     ensure_token_usage_table(cursor)
                     conn.commit()
                 finally:

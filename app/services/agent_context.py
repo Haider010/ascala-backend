@@ -3,11 +3,13 @@ import re
 from typing import Any
 
 from app.db.schema import ensure_agent_outputs_tables
+from app.db.schema import ensure_brandboard_outputs_table
 
 
 OUTPUT_TABLES = {
     "molly": "molly_outputs",
     "brandy": "brandy_outputs",
+    "brandboard": "brandboard_outputs",
     "sacha": "sacha_outputs",
 }
 
@@ -27,6 +29,16 @@ UPSTREAM_CONTEXT_PLAN = {
         ],
     },
     "sacha": {
+        "brandboard": [
+            "brand_foundation",
+            "audience_messaging",
+            "voice_tone_system",
+            "content_application_system",
+            "color_system",
+            "typography_system",
+            "button_system",
+            "imagery_system",
+        ],
         "molly": [
             "positioning",
             "ideal_client",
@@ -76,6 +88,8 @@ def coerce_json(value: Any) -> dict:
 
 def select_sections(structured_output: dict, desired_keys: list[str]) -> dict[str, str]:
     sections = structured_output.get("sections") if isinstance(structured_output, dict) else None
+    if not isinstance(sections, dict) and isinstance(structured_output, dict):
+        sections = structured_output
     if not isinstance(sections, dict):
         return {}
 
@@ -89,6 +103,8 @@ def select_sections(structured_output: dict, desired_keys: list[str]) -> dict[st
         if isinstance(section_value, dict):
             content = str(section_value.get("content") or "")
             heading = section_value.get("heading") or section_key
+            if not content.strip():
+                content = json.dumps(section_value, ensure_ascii=False, default=str)
         else:
             content = str(section_value)
             heading = section_key
@@ -137,6 +153,7 @@ def build_upstream_context(cursor, location_id: str | None, agent_id: str) -> di
         return {}
 
     ensure_agent_outputs_tables(cursor)
+    ensure_brandboard_outputs_table(cursor)
     context = {}
     for upstream_agent_id, desired_keys in context_plan.items():
         output = load_agent_output(cursor, location_id, upstream_agent_id, desired_keys)

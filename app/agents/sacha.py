@@ -74,9 +74,10 @@ def system_parts(state: SachaState) -> list[str]:
 
     if state.get("upstream_context_text"):
         parts.append(
-            "Upstream Ascala context is provided below. Use Molly for audience, positioning, "
-            "buyer psychology, and content direction. Use Brandy for voice, tone, language, "
-            "CTA rules, and guardrails. Do not ask the user for details already clearly present here.\n\n"
+            "Upstream Ascala context is provided below. If BrandBoard context is present, treat it as the "
+            "primary strategic source of truth because it synthesizes Molly and Brandy. Use Molly for deeper "
+            "audience, positioning, buyer psychology, and content direction. Use Brandy for voice, tone, "
+            "language, CTA rules, and guardrails. Do not ask the user for details already clearly present here.\n\n"
             f"{state['upstream_context_text']}"
         )
 

@@ -23,6 +23,7 @@ class Settings:
     brandy_model: str
     sacha_model: str
     escouade_model: str
+    brandboard_model: str
     log_level: str
     db_pool_min_connections: int = 1
     db_pool_max_connections: int = 5
@@ -109,6 +110,7 @@ def get_settings() -> Settings:
         brandy_model=os.getenv("BRANDY_MODEL", os.getenv("AGENT_MODEL", "gpt-5.2")),
         sacha_model=os.getenv("SACHA_MODEL", os.getenv("AGENT_MODEL", "gpt-5.2")),
         escouade_model=os.getenv("ESCOUADE_MODEL", "gpt-4.1-mini"),
+        brandboard_model=os.getenv("BRANDBOARD_MODEL", os.getenv("AGENT_MODEL", "gpt-5.2")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         db_pool_min_connections=_env_int("DB_POOL_MIN_CONNECTIONS", 1),
         db_pool_max_connections=_env_int("DB_POOL_MAX_CONNECTIONS", 5),

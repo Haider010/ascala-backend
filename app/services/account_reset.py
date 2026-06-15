@@ -1,8 +1,9 @@
-from app.db.schema import ensure_agent_outputs_tables, ensure_n8n_chat_histories_metadata
+from app.db.schema import ensure_agent_outputs_tables, ensure_brandboard_outputs_table, ensure_n8n_chat_histories_metadata
 
 
 def clear_account_outputs(cursor, location_id: str) -> dict[str, int]:
     ensure_agent_outputs_tables(cursor)
+    ensure_brandboard_outputs_table(cursor)
     ensure_n8n_chat_histories_metadata(cursor)
 
     deleted = {}
@@ -10,6 +11,9 @@ def clear_account_outputs(cursor, location_id: str) -> dict[str, int]:
     for table_name in ("molly_outputs", "brandy_outputs", "sacha_outputs"):
         cursor.execute(f"DELETE FROM {table_name} WHERE location_id = %s", (location_id,))
         deleted[table_name] = cursor.rowcount
+
+    cursor.execute("DELETE FROM brandboard_outputs WHERE location_id = %s", (location_id,))
+    deleted["brandboard_outputs"] = cursor.rowcount
 
     cursor.execute("DELETE FROM escouade_items WHERE location_id = %s", (location_id,))
     deleted["escouade_items"] = cursor.rowcount

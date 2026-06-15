@@ -144,6 +144,7 @@ def load_knowledge_context(db: Session, location_id: str) -> dict[str, Any]:
     for agent_id, table_name in (
         ("molly", "molly_outputs"),
         ("brandy", "brandy_outputs"),
+        ("brandboard", "brandboard_outputs"),
         ("sacha", "sacha_outputs"),
     ):
         row = db.execute(
@@ -173,10 +174,15 @@ def load_knowledge_context(db: Session, location_id: str) -> dict[str, Any]:
 
 def build_compact_summary(final_output: str, structured_output: dict) -> dict[str, Any]:
     sections = structured_output.get("sections") if isinstance(structured_output, dict) else None
+    if not isinstance(sections, dict) and isinstance(structured_output, dict):
+        sections = structured_output
     if isinstance(sections, dict) and sections:
         compact_sections = {}
         for key, value in list(sections.items())[:16]:
-            content = str(value.get("content", "")) if isinstance(value, dict) else str(value)
+            if isinstance(value, dict):
+                content = str(value.get("content", "")) or json.dumps(value, ensure_ascii=False, default=str)
+            else:
+                content = str(value)
             compact_sections[key] = content[:1200]
         return {"sections": compact_sections}
 
@@ -212,6 +218,18 @@ def build_production_brief(knowledge_context: dict[str, Any], member_type: str, 
         "brand_voice_context": pick_sections(
             knowledge_context.get("brandy"),
             ["brand_summary", "voice", "tone", "language", "guardrails", "audience"],
+        ),
+        "brandboard_context": pick_sections(
+            knowledge_context.get("brandboard"),
+            [
+                "brand_foundation",
+                "audience_messaging",
+                "voice_tone_system",
+                "content_application_system",
+                "color_system",
+                "typography_system",
+                "button_system",
+            ],
         ),
         "strategy_context": pick_sections(
             knowledge_context.get("sacha"),

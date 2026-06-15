@@ -75,6 +75,35 @@ def ensure_agent_outputs_tables(cursor) -> None:
         cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{table_name}_location_id_unique ON {table_name} (location_id)")
 
 
+def ensure_brandboard_outputs_table(cursor) -> None:
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS brandboard_outputs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            location_id TEXT NOT NULL UNIQUE,
+            final_output TEXT NOT NULL,
+            structured_output JSONB NOT NULL DEFAULT '{}'::jsonb,
+            output_type TEXT NOT NULL DEFAULT 'brand_guidelines_100x',
+            theme TEXT,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            version INTEGER NOT NULL DEFAULT 1,
+            source_molly_updated_at TIMESTAMPTZ,
+            source_brandy_updated_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+    cursor.execute("ALTER TABLE brandboard_outputs ADD COLUMN IF NOT EXISTS final_output TEXT NOT NULL DEFAULT ''")
+    cursor.execute("ALTER TABLE brandboard_outputs ADD COLUMN IF NOT EXISTS structured_output JSONB NOT NULL DEFAULT '{}'::jsonb")
+    cursor.execute("ALTER TABLE brandboard_outputs ADD COLUMN IF NOT EXISTS output_type TEXT NOT NULL DEFAULT 'brand_guidelines_100x'")
+    cursor.execute("ALTER TABLE brandboard_outputs ADD COLUMN IF NOT EXISTS theme TEXT")
+    cursor.execute("ALTER TABLE brandboard_outputs ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb")
+    cursor.execute("ALTER TABLE brandboard_outputs ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1")
+    cursor.execute("ALTER TABLE brandboard_outputs ADD COLUMN IF NOT EXISTS source_molly_updated_at TIMESTAMPTZ")
+    cursor.execute("ALTER TABLE brandboard_outputs ADD COLUMN IF NOT EXISTS source_brandy_updated_at TIMESTAMPTZ")
+    cursor.execute("ALTER TABLE brandboard_outputs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_brandboard_outputs_location_id_unique ON brandboard_outputs (location_id)")
+
+
 def ensure_token_usage_table(cursor) -> None:
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ascala_token_usage_monthly (
