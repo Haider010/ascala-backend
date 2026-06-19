@@ -19,10 +19,15 @@ BARE_DOMAIN_PATTERN = re.compile(
     r"(?<![@\w])(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s<>()\"']*)?",
     re.IGNORECASE,
 )
+PLATFORM_KNOWLEDGE_PATH = Path(__file__).resolve().parent / "prompts" / "b10x_social_planner_knowledge.md"
 
 
 def read_prompt(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def read_platform_knowledge() -> str:
+    return PLATFORM_KNOWLEDGE_PATH.read_text(encoding="utf-8")
 
 
 def build_chat_llm(model: str):

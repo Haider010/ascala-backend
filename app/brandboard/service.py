@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.agents.common import build_chat_llm, read_prompt
+from app.agents.common import build_chat_llm, read_platform_knowledge, read_prompt
 from app.brandboard.schemas import BrandBoardDocument
 from app.core.config import get_settings
 from app.db.schema import ensure_agent_outputs_tables, ensure_brandboard_outputs_table
@@ -115,7 +115,7 @@ def _build_messages(sources: dict[str, Any], instruction: str = "") -> list:
         )
 
     return [
-        SystemMessage(content=read_prompt(PROMPT_PATH)),
+        SystemMessage(content="\n\n".join([read_prompt(PROMPT_PATH), read_platform_knowledge()])),
         HumanMessage(
             content=(
                 "Generate the BrandBoard 100X brand guidelines JSON from the account context below. "

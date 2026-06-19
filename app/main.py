@@ -19,7 +19,7 @@ def create_app() -> FastAPI:
     configure_logging()
     settings = get_settings()
 
-    app = FastAPI(title="Ascala GHL API")
+    app = FastAPI(title="Ascala B10X API")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.allowed_origins),

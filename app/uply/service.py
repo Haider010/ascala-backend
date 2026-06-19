@@ -26,6 +26,12 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic", ".heif"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"}
 GIF_EXTENSIONS = {".gif"}
 MEDIA_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | GIF_EXTENSIONS
+PUBLIC_PROVIDER_REPLACEMENTS = (
+    (re.compile(r"\bGoHighLevel\b", re.IGNORECASE), "B10X.ai"),
+    (re.compile(r"\bHighLevel\b", re.IGNORECASE), "B10X.ai"),
+    (re.compile(r"\bLeadConnector\b", re.IGNORECASE), "B10X.ai"),
+    (re.compile(r"\bGHL\b", re.IGNORECASE), "B10X.ai"),
+)
 
 DATE_FORMATS = (
     "%Y-%m-%d %H:%M",
@@ -54,6 +60,13 @@ class PreparedCsv:
     summary: dict[str, Any]
 
 
+def _public_provider_detail(value: str) -> str:
+    cleaned = value[:500]
+    for pattern, replacement in PUBLIC_PROVIDER_REPLACEMENTS:
+        cleaned = pattern.sub(replacement, cleaned)
+    return cleaned
+
+
 def _location_token_expires_at(expires_in: int | str | None) -> datetime:
     try:
         seconds = int(expires_in or 0)
@@ -78,19 +91,19 @@ def _request_location_token(company_access_token: str, company_id: str, location
             timeout=30,
         )
     except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail="Unable to request a GHL location access token.") from exc
+        raise HTTPException(status_code=502, detail="Unable to verify the B10X.ai media upload connection.") from exc
 
     if response.status_code >= 400:
-        detail = response.text[:500] or response.reason
-        raise HTTPException(status_code=502, detail=f"GHL location token request failed: {detail}")
+        detail = _public_provider_detail(response.text or response.reason)
+        raise HTTPException(status_code=502, detail=f"B10X.ai media upload authorization failed: {detail}")
 
     try:
         payload: dict[str, Any] = response.json()
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=502, detail="GHL location token response was not valid JSON.") from exc
+        raise HTTPException(status_code=502, detail="B10X.ai media upload authorization returned an invalid response.") from exc
 
     if not payload.get("access_token"):
-        raise HTTPException(status_code=502, detail="GHL location token response did not include an access token.")
+        raise HTTPException(status_code=502, detail="B10X.ai media upload authorization did not return a usable token.")
 
     return payload
 
@@ -143,7 +156,7 @@ def get_location_access_token(cursor, location_id: str) -> str:
     )
     row = cursor.fetchone()
     if not row:
-        raise HTTPException(status_code=409, detail="This location is not connected to a stored HighLevel install.")
+        raise HTTPException(status_code=409, detail="This account is not connected to B10X.ai media upload.")
 
     installed_location_id, company_id, location_token, expires_at, company_token, company_scope = row
     now = datetime.now(timezone.utc)
@@ -153,11 +166,11 @@ def get_location_access_token(cursor, location_id: str) -> str:
         return location_token
 
     if not company_token:
-        raise HTTPException(status_code=409, detail="GHL company access token is not available for this location.")
+        raise HTTPException(status_code=409, detail="B10X.ai media upload access is not available for this account.")
     if "oauth.write" not in (company_scope or ""):
         raise HTTPException(
             status_code=409,
-            detail="The HighLevel app install is missing oauth.write. Reinstall the app after adding the scope.",
+            detail="The B10X.ai app connection is missing media upload authorization. Reconnect the app after enabling the required permission.",
         )
 
     payload = _request_location_token(company_token, company_id, location_id)
@@ -215,7 +228,7 @@ async def read_media_zip(media_zip: UploadFile) -> list[MediaFile]:
         if total_size > MAX_MEDIA_BYTES:
             raise HTTPException(status_code=413, detail="Media ZIP is too large. Keep media files under 50 MB total.")
         if len(media_files) >= MAX_MEDIA_FILES:
-            raise HTTPException(status_code=400, detail=f"GHL CSV import supports up to {MAX_MEDIA_FILES} media/post rows.")
+            raise HTTPException(status_code=400, detail=f"B10X Social Planner CSV import supports up to {MAX_MEDIA_FILES} media/post rows.")
         data = archive.read(info)
         content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
         media_files.append(MediaFile(filename, data, content_type, _media_kind(filename)))
@@ -246,7 +259,7 @@ async def read_social_planner_rows(schedule_file: UploadFile) -> tuple[list[list
             rows.append(["" if value is None else str(value) for value in row])
         return rows, "xlsx"
 
-    raise HTTPException(status_code=400, detail="Upload a GHL CSV or XLSX schedule file.")
+    raise HTTPException(status_code=400, detail="Upload a B10X Social Planner CSV or XLSX schedule file.")
 
 
 def _pad_rows(rows: list[list[str]]) -> list[list[str]]:
@@ -275,7 +288,7 @@ def _validate_date(value: str, column_name: str, row_number: int) -> str:
 
     raise HTTPException(
         status_code=400,
-        detail=f"Row {row_number} has an unsupported date in '{column_name}'. Use a GHL-supported date format.",
+        detail=f"Row {row_number} has an unsupported date in '{column_name}'. Use a B10X Social Planner supported date format.",
     )
 
 
@@ -326,7 +339,7 @@ def _extract_urls(payload: Any) -> list[str]:
 def _pick_media_url(payload: Any) -> str:
     urls = _extract_urls(payload)
     if not urls:
-        raise HTTPException(status_code=502, detail="GHL media upload succeeded but did not return a media URL.")
+        raise HTTPException(status_code=502, detail="B10X.ai media upload succeeded but did not return a media URL.")
 
     for url in urls:
         if "storage.googleapis.com" in url or "msgsndr" in url:
@@ -346,11 +359,11 @@ def upload_media_file(media_file: MediaFile, token: str) -> str:
     try:
         response = requests.post(GHL_MEDIA_UPLOAD_URL, headers=headers, files=files, timeout=120)
     except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail=f"GHL media upload failed for {media_file.name}.") from exc
+        raise HTTPException(status_code=502, detail=f"B10X.ai media upload failed for {media_file.name}.") from exc
 
     if response.status_code >= 400:
-        detail = response.text[:500] or response.reason
-        raise HTTPException(status_code=502, detail=f"GHL rejected {media_file.name}: {detail}")
+        detail = _public_provider_detail(response.text or response.reason)
+        raise HTTPException(status_code=502, detail=f"B10X.ai rejected {media_file.name}: {detail}")
 
     try:
         payload: Any = response.json()
@@ -377,7 +390,7 @@ def _set_media_url(row: list[str], field_headers: list[str], media_file: MediaFi
 
     raise HTTPException(
         status_code=400,
-        detail=f"Row {row_number} cannot receive {media_file.media_kind} media because the matching GHL column is missing.",
+        detail=f"Row {row_number} cannot receive {media_file.media_kind} media because the matching B10X Social Planner column is missing.",
     )
 
 
@@ -390,17 +403,17 @@ def _to_csv(rows: list[list[str]]) -> str:
 
 async def build_uply_csv(schedule_file: UploadFile, media_zip: UploadFile, token: str | None) -> PreparedCsv:
     if not token:
-        raise HTTPException(status_code=500, detail="GHL media upload token is not configured.")
+        raise HTTPException(status_code=500, detail="B10X.ai media upload token is not configured.")
 
     rows, source_type = await read_social_planner_rows(schedule_file)
     rows = _pad_rows(rows)
     if len(rows) < 3:
-        raise HTTPException(status_code=400, detail="The GHL schedule file must include two header rows and at least one post row.")
+        raise HTTPException(status_code=400, detail="The B10X Social Planner schedule file must include two header rows and at least one post row.")
 
     field_headers = rows[1]
     post_rows = [row for row in rows[2:] if any(cell.strip() for cell in row)]
     if len(post_rows) > MAX_POST_ROWS:
-        raise HTTPException(status_code=400, detail=f"CSV import supports up to {MAX_POST_ROWS} posts per file.")
+        raise HTTPException(status_code=400, detail=f"B10X Social Planner CSV import supports up to {MAX_POST_ROWS} posts per file.")
 
     media_files = await read_media_zip(media_zip)
     if len(media_files) != len(post_rows):
@@ -427,7 +440,7 @@ async def build_uply_csv(schedule_file: UploadFile, media_zip: UploadFile, token
 
     base_name = _clean_upload_filename(schedule_file.filename)
     base_name = re.sub(r"\.(csv|xlsx)$", "", base_name, flags=re.IGNORECASE)
-    filename = f"uply-ghl-ready-{base_name}.csv"
+    filename = f"uply-b10x-ready-{base_name}.csv"
     summary = {
         "sourceType": source_type,
         "postRows": len(post_rows),

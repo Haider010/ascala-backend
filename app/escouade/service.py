@@ -10,6 +10,7 @@ from langchain_openai import ChatOpenAI
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, selectinload
 
+from app.agents.common import read_platform_knowledge
 from app.core.config import get_settings
 from app.escouade.csv import build_items_csv
 from app.escouade.models import EscouadeBatch, EscouadeItem
@@ -298,7 +299,7 @@ def build_generation_messages(
         "user_instruction": instruction,
     }
     return [
-        SystemMessage(content=f"{master_prompt}\n\n{member_prompt}"),
+        SystemMessage(content="\n\n".join([master_prompt, member_prompt, read_platform_knowledge()])),
         HumanMessage(content=json.dumps(payload, ensure_ascii=False, default=str)),
     ]
 

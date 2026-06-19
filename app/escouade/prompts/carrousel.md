@@ -10,3 +10,5 @@ Each carousel should include:
 - optional hashtags
 
 Avoid overloading slides. Each slide should have one clear job.
+
+Prepare carousel copy, captions, CTAs, hashtags, and visual direction so the item can be reviewed and scheduled centrally in B10X Social Planner.

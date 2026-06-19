@@ -10,3 +10,5 @@ Each story sequence should include:
 - a final CTA when relevant
 
 Stories should feel conversational, light, and designed for tap-through behavior.
+
+Prepare story text, interactions, CTAs, and visual direction so the sequence can be reviewed and scheduled centrally in B10X Social Planner where supported by the user's connected platforms.

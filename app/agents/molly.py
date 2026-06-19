@@ -9,6 +9,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
 from app.core.config import get_settings
+from app.agents.common import read_platform_knowledge
 from app.db.schema import ensure_n8n_chat_histories_metadata
 from app.db.session import db_connection
 from app.services.agents import get_agent_histories, get_agent_session_id
@@ -163,7 +164,7 @@ def crawl_urls(state: MollyState) -> MollyState:
 
 
 def build_messages(state: MollyState) -> list:
-    system_parts = [read_prompt()]
+    system_parts = [read_prompt(), read_platform_knowledge()]
     if state.get("url_context"):
         system_parts.append(
             "Retrieved URL context is provided below. Use it as source material. "

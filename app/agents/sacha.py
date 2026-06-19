@@ -9,6 +9,7 @@ from app.agents.common import (
     build_messages,
     crawl_urls_to_context,
     extract_urls,
+    read_platform_knowledge,
     read_prompt,
     save_message,
     validate_agent_context,
@@ -70,7 +71,7 @@ def crawl_urls(state: SachaState) -> SachaState:
 
 
 def system_parts(state: SachaState) -> list[str]:
-    parts = [read_prompt(PROMPT_PATH)]
+    parts = [read_prompt(PROMPT_PATH), read_platform_knowledge()]
 
     if state.get("upstream_context_text"):
         parts.append(

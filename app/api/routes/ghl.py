@@ -31,7 +31,7 @@ async def create_ghl_session(payload: GhlSessionRequest, request: Request):
 
     if not settings.ghl_app_shared_secret:
         logger.error("[ghl-session:%s] Missing GHL app shared secret environment variable.", request_id)
-        raise HTTPException(status_code=500, detail="GHL app shared secret is not configured.")
+        raise HTTPException(status_code=500, detail="B10X.ai app session verification is not configured.")
 
     if not settings.app_session_secret:
         logger.error("[ghl-session:%s] Missing app session secret environment variable.", request_id)
@@ -62,11 +62,11 @@ async def create_ghl_session(payload: GhlSessionRequest, request: Request):
         )
     except Exception:
         logger.exception("[ghl-session:%s] Unable to decrypt GHL session context.", request_id)
-        raise HTTPException(status_code=400, detail="Unable to decrypt GHL session context.")
+        raise HTTPException(status_code=400, detail="Unable to verify the B10X.ai session context.")
 
     if not isinstance(context, dict):
         logger.warning("[ghl-session:%s] Decrypted context is not an object. context_type=%s", request_id, type(context).__name__)
-        raise HTTPException(status_code=400, detail="Decrypted GHL session context is invalid.")
+        raise HTTPException(status_code=400, detail="B10X.ai session context is invalid.")
 
     connection = find_connection_for_context(context, request_id=request_id)
     if not connection:
@@ -77,7 +77,7 @@ async def create_ghl_session(payload: GhlSessionRequest, request: Request):
             context.get("companyId") or "missing",
             context.get("activeLocation") or "missing",
         )
-        raise HTTPException(status_code=403, detail="This GHL account has not installed Ascala.")
+        raise HTTPException(status_code=403, detail="This B10X.ai account has not installed Ascala.")
 
     upsert_installed_location(context, connection, request_id)
 
