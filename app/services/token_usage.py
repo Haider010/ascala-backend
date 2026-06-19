@@ -105,6 +105,45 @@ def record_token_usage(
             ensure_token_usage_table(cursor)
             cursor.execute(
                 """
+                INSERT INTO ascala_token_usage_events (
+                    usage_month,
+                    company_id,
+                    location_id,
+                    user_id,
+                    agent_id,
+                    model,
+                    response_id,
+                    input_tokens,
+                    fresh_input_tokens,
+                    cached_input_tokens,
+                    output_tokens,
+                    total_tokens,
+                    metadata,
+                    usage_metadata,
+                    response_metadata_usage
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
+                """,
+                (
+                    usage_month,
+                    company_id,
+                    location_id,
+                    user_id,
+                    agent_id,
+                    model,
+                    usage.get("response_id"),
+                    usage["input_tokens"],
+                    usage["fresh_input_tokens"],
+                    usage["cached_input_tokens"],
+                    usage["output_tokens"],
+                    usage["total_tokens"],
+                    json.dumps(metadata or {}, default=str),
+                    json.dumps(usage.get("usage_metadata") or {}, default=str),
+                    json.dumps(usage.get("response_metadata_usage") or {}, default=str),
+                ),
+            )
+            cursor.execute(
+                """
                 INSERT INTO ascala_token_usage_monthly (
                     usage_month,
                     company_id,
@@ -170,7 +209,6 @@ def empty_totals() -> dict[str, int]:
 
 def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
     location_id = session.get("activeLocation") or session.get("locationId")
-    user_id = session.get("userId") or session.get("user_id") or "unknown"
 
     if not location_id:
         return {
@@ -178,6 +216,7 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
             "allTime": empty_totals(),
             "months": [],
             "agents": [],
+            "recentEvents": [],
         }
 
     current_month = datetime.now(UTC).date().replace(day=1)
@@ -197,10 +236,9 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
                     COALESCE(SUM(call_count), 0)
                 FROM ascala_token_usage_monthly
                 WHERE location_id = %s
-                  AND user_id = %s
                   AND usage_month = %s
                 """,
-                (location_id, user_id, current_month),
+                (location_id, current_month),
             )
             current_row = cursor.fetchone()
 
@@ -215,9 +253,8 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
                     COALESCE(SUM(call_count), 0)
                 FROM ascala_token_usage_monthly
                 WHERE location_id = %s
-                  AND user_id = %s
                 """,
-                (location_id, user_id),
+                (location_id,),
             )
             all_time_row = cursor.fetchone()
 
@@ -233,11 +270,10 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
                     COALESCE(SUM(call_count), 0) AS call_count
                 FROM ascala_token_usage_monthly
                 WHERE location_id = %s
-                  AND user_id = %s
                 GROUP BY usage_month
                 ORDER BY usage_month DESC
                 """,
-                (location_id, user_id),
+                (location_id,),
             )
             month_rows = cursor.fetchall()
 
@@ -247,21 +283,44 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
                     agent_id,
                     model,
                     usage_month,
+                    COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                    COALESCE(SUM(fresh_input_tokens), 0) AS fresh_input_tokens,
+                    COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
+                    COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                    COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                    COALESCE(SUM(call_count), 0) AS call_count,
+                    MAX(updated_at) AS updated_at
+                FROM ascala_token_usage_monthly
+                WHERE location_id = %s
+                GROUP BY agent_id, model, usage_month
+                ORDER BY usage_month DESC, agent_id ASC, model ASC
+                """,
+                (location_id,),
+            )
+            agent_rows = cursor.fetchall()
+
+            cursor.execute(
+                """
+                SELECT
+                    recorded_at,
+                    agent_id,
+                    model,
+                    user_id,
+                    response_id,
                     input_tokens,
                     fresh_input_tokens,
                     cached_input_tokens,
                     output_tokens,
                     total_tokens,
-                    call_count,
-                    updated_at
-                FROM ascala_token_usage_monthly
+                    metadata
+                FROM ascala_token_usage_events
                 WHERE location_id = %s
-                  AND user_id = %s
-                ORDER BY usage_month DESC, agent_id ASC
+                ORDER BY recorded_at DESC
+                LIMIT 50
                 """,
-                (location_id, user_id),
+                (location_id,),
             )
-            agent_rows = cursor.fetchall()
+            event_rows = cursor.fetchall()
         finally:
             cursor.close()
 
@@ -277,7 +336,7 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "locationId": location_id,
-        "userId": user_id,
+        "scope": "location",
         "currentMonthKey": current_month.isoformat()[:7],
         "currentMonth": totals(current_row),
         "allTime": totals(all_time_row),
@@ -307,5 +366,21 @@ def build_token_usage_summary(session: dict[str, Any]) -> dict[str, Any]:
                 "updatedAt": row[9].isoformat() if hasattr(row[9], "isoformat") else row[9],
             }
             for row in agent_rows
+        ],
+        "recentEvents": [
+            {
+                "recordedAt": row[0].isoformat() if hasattr(row[0], "isoformat") else row[0],
+                "agentId": row[1],
+                "model": row[2],
+                "userId": row[3],
+                "responseId": row[4],
+                "inputTokens": _to_int(row[5]),
+                "freshInputTokens": _to_int(row[6]),
+                "cachedInputTokens": _to_int(row[7]),
+                "outputTokens": _to_int(row[8]),
+                "totalTokens": _to_int(row[9]),
+                "metadata": row[10] if isinstance(row[10], dict) else {},
+            }
+            for row in event_rows
         ],
     }
