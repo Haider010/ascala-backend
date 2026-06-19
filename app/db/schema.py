@@ -1,4 +1,43 @@
+def ensure_connections_table(cursor) -> None:
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ascala_connections (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            access_token TEXT,
+            refresh_token TEXT,
+            token_type TEXT,
+            expires_in INTEGER,
+            scope TEXT,
+            refresh_token_id TEXT,
+            company_id TEXT NOT NULL,
+            user_id TEXT,
+            user_type TEXT,
+            is_bulk_installation BOOLEAN,
+            api_key TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS access_token TEXT")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS refresh_token TEXT")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS token_type TEXT")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS expires_in INTEGER")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS scope TEXT")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS refresh_token_id TEXT")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS company_id TEXT")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS user_id TEXT")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS user_type TEXT")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS is_bulk_installation BOOLEAN")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS api_key TEXT")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
+    cursor.execute("ALTER TABLE ascala_connections ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ascala_connections_company_id
+        ON ascala_connections (company_id)
+    """)
+
+
 def ensure_installed_locations_table(cursor) -> None:
+    ensure_connections_table(cursor)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ascala_installed_locations (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

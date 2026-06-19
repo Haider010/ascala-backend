@@ -282,6 +282,9 @@ def crawl_website(url: str, config: CrawlerConfig | None = None) -> CrawlResult:
                 expand_visible_content(driver)
                 scroll_page(driver)
                 page = extract_page(driver.page_source, driver.current_url or current_url, start_url, config.max_chars_per_page)
+                redirected_url = normalize_url(page.url)
+                if redirected_url:
+                    visited.add(redirected_url)
             except Exception as exc:
                 page = CrawledPage(url=current_url, error=str(exc))
 

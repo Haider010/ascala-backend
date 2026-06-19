@@ -18,6 +18,10 @@ from app.services.token_usage import record_token_usage
 from app.services.web_crawler import CrawlerConfig, crawl_website, validate_public_url
 
 URL_PATTERN = re.compile(r"https?://[^\s<>()\"']+", re.IGNORECASE)
+BARE_DOMAIN_PATTERN = re.compile(
+    r"(?<![@\w])(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s<>()\"']*)?",
+    re.IGNORECASE,
+)
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "molly.md"
 
 
@@ -34,8 +38,22 @@ class MollyState(TypedDict, total=False):
 def extract_urls(text: str) -> list[str]:
     urls = []
     seen = set()
-    for match in URL_PATTERN.findall(text or ""):
-        raw_url = match.rstrip(".,;:!?)]}")
+    source = text or ""
+    full_url_spans = []
+    candidates = []
+
+    for match in URL_PATTERN.finditer(source):
+        full_url_spans.append(match.span())
+        candidates.append(match.group(0))
+
+    for match in BARE_DOMAIN_PATTERN.finditer(source):
+        span = match.span()
+        if any(span[0] >= full_span[0] and span[1] <= full_span[1] for full_span in full_url_spans):
+            continue
+        candidates.append(f"https://{match.group(0)}")
+
+    for candidate in candidates:
+        raw_url = candidate.rstrip(".,;:!?)]}")
         try:
             url = validate_public_url(raw_url)
         except ValueError:
