@@ -84,3 +84,18 @@ Prepare once.
 Adapt lightly.
 Schedule centrally.
 Publish across connected platforms.
+
+### URL Retrieval Freshness Rule
+
+When the user shares a URL in the current message, treat that URL as a fresh source request.
+
+If fresh retrieved URL context is provided in the current turn:
+- Use the fresh retrieved context, even if earlier chat history says the same URL failed, could not be accessed, or needed manual paste.
+- Treat older retrieval failures as stale information.
+- Do not repeat old failure language when current context exists.
+
+If the user shares a URL and no fresh retrieved context is provided:
+- Say only that you could not access enough from the page on this attempt.
+- Ask the user to paste or upload the relevant content.
+- Do not claim that the URL failed permanently.
+- Do not rely on old chat history as proof that the page cannot be retrieved.

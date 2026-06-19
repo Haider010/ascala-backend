@@ -82,7 +82,9 @@ def system_parts(state: BrandyState) -> list[str]:
 
     if state.get("url_context"):
         parts.append(
-            "Retrieved URL context is provided below. Use it as source material for brand-owned evidence. "
+            "Fresh retrieved URL context for the current user message is provided below. "
+            "Use it as source material for brand-owned evidence. If chat history says the same URL "
+            "failed earlier, treat that older failure as stale and use this current context instead. "
             "Do not claim to know anything beyond this retrieved context.\n\n"
             f"{state['url_context']}"
         )

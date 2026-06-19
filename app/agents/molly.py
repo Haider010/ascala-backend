@@ -167,7 +167,9 @@ def build_messages(state: MollyState) -> list:
     system_parts = [read_prompt(), read_platform_knowledge()]
     if state.get("url_context"):
         system_parts.append(
-            "Retrieved URL context is provided below. Use it as source material. "
+            "Fresh retrieved URL context for the current user message is provided below. "
+            "Use it as source material. If chat history says the same URL failed earlier, "
+            "treat that older failure as stale and use this current context instead. "
             "Do not claim to know anything beyond this retrieved context.\n\n"
             f"{state['url_context']}"
         )
