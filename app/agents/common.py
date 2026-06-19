@@ -2,6 +2,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from fastapi import HTTPException
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -46,7 +47,7 @@ def validate_agent_context(session: dict[str, Any], agent_id: str, provided_sess
     return session_id, history
 
 
-def extract_urls(text: str, limit: int = 3) -> list[str]:
+def extract_urls(text: str, limit: int = 8) -> list[str]:
     urls = []
     seen = set()
     source = text or ""
@@ -55,19 +56,32 @@ def extract_urls(text: str, limit: int = 3) -> list[str]:
 
     for match in URL_PATTERN.finditer(source):
         full_url_spans.append(match.span())
-        candidates.append(match.group(0))
+        candidates.append((match.group(0), False))
 
     for match in BARE_DOMAIN_PATTERN.finditer(source):
         span = match.span()
         if any(span[0] >= full_span[0] and span[1] <= full_span[1] for full_span in full_url_spans):
             continue
-        candidates.append(f"https://{match.group(0)}")
+        candidates.append((f"https://{match.group(0)}", True))
 
-    for candidate in candidates:
+    validated = []
+    full_url_hosts_with_paths = set()
+    for candidate, is_bare_domain in candidates:
         raw_url = candidate.rstrip(".,;:!?)]}")
         try:
             url = validate_public_url(raw_url)
         except ValueError:
+            continue
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower().removeprefix("www.")
+        if not is_bare_domain and parsed.path not in {"", "/"}:
+            full_url_hosts_with_paths.add(hostname)
+        validated.append((url, is_bare_domain))
+
+    for url, is_bare_domain in validated:
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower().removeprefix("www.")
+        if is_bare_domain and parsed.path in {"", "/"} and hostname in full_url_hosts_with_paths:
             continue
         if url in seen:
             continue
@@ -88,13 +102,14 @@ def crawl_urls_to_context(urls: list[str], max_total_pages: int = 10) -> str:
         if remaining_pages <= 0:
             break
 
-        per_url_pages = min(5, remaining_pages)
+        is_multi_url_request = len(urls) > 1
+        per_url_pages = 1 if is_multi_url_request else min(5, remaining_pages)
         try:
             result = crawl_website(
                 url,
                 CrawlerConfig(
                     max_pages=per_url_pages,
-                    max_depth=1,
+                    max_depth=0 if is_multi_url_request else 1,
                     max_total_chars=45000,
                     max_chars_per_page=12000,
                 ),

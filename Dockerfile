@@ -4,6 +4,19 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
+# Install Chromium for Selenium-based crawling in Linux/Railway.
+# The local Windows environment already has a browser, but python:slim does not.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        chromium \
+        chromium-driver \
+        fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
+
 # Copy requirements file
 COPY requirements.txt .
 

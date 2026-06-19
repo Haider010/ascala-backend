@@ -1,5 +1,7 @@
 import ipaddress
+import os
 import re
+import shutil
 import socket
 import time
 from collections import deque
@@ -11,6 +13,7 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -140,9 +143,28 @@ def create_driver(config: CrawlerConfig):
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-background-networking")
+    options.add_argument("--no-first-run")
     options.add_argument("--log-level=3")
     options.page_load_strategy = "eager"
-    driver = webdriver.Chrome(options=options)
+
+    chrome_binary = (
+        os.getenv("CHROME_BIN")
+        or shutil.which("chromium")
+        or shutil.which("chromium-browser")
+        or shutil.which("google-chrome")
+        or shutil.which("chrome")
+    )
+    if chrome_binary:
+        options.binary_location = chrome_binary
+
+    chromedriver_path = os.getenv("CHROMEDRIVER_PATH") or shutil.which("chromedriver")
+    if chromedriver_path:
+        driver = webdriver.Chrome(service=Service(chromedriver_path), options=options)
+    else:
+        driver = webdriver.Chrome(options=options)
+
     driver.set_page_load_timeout(config.page_timeout_seconds)
     return driver
 
