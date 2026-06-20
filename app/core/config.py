@@ -55,9 +55,35 @@ class Settings:
         }
 
 
+DEFAULT_ALLOWED_ORIGINS = (
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "https://ascala-frontend-production.up.railway.app",
+)
+
+
+def _normalize_origin(origin: str) -> str:
+    return origin.strip().rstrip("/")
+
+
 def _split_origins(value: str) -> tuple[str, ...]:
-    origins = tuple(origin.strip() for origin in value.split(",") if origin.strip())
-    return origins or ("*",)
+    origins = tuple(_normalize_origin(origin) for origin in value.split(",") if origin.strip())
+    return tuple(origin for origin in origins if origin)
+
+
+def _allowed_origins_from_env() -> tuple[str, ...]:
+    raw_value = os.getenv("allowed_origins") or os.getenv("ALLOWED_ORIGINS") or ""
+    configured_origins = _split_origins(raw_value)
+    merged_origins = (*DEFAULT_ALLOWED_ORIGINS, *configured_origins)
+
+    deduped: list[str] = []
+    for origin in merged_origins:
+        if origin not in deduped:
+            deduped.append(origin)
+
+    return tuple(deduped) or ("*",)
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -95,7 +121,7 @@ def get_settings() -> Settings:
         client_secret=client_secret,
         ghl_app_shared_secret=ghl_app_shared_secret,
         app_session_secret=app_session_secret,
-        allowed_origins=_split_origins(os.getenv("allowed_origins", "*")),
+        allowed_origins=_allowed_origins_from_env(),
         molly_webhook_url=os.getenv(
             "molly_webhook_url",
             "https://primary-production-b3410.up.railway.app/webhook/08d8a0f2-afb8-4e80-91d6-0efa25d5f85e/chat",
