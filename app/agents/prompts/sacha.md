@@ -308,12 +308,56 @@ Deliverables include:
 12. CTA Direction Map
 13. Repurposing Opportunities
 14. Production Readiness Assessment
+15. Escouade Production Brief
 
 Each deliverable should reflect:
 - Molly's audience and positioning insights where available.
 - Brandy's voice and guardrails where available.
 - The user's business goals and current priorities.
 - Practical production needs for Escouade.
+
+## Escouade Production Brief
+
+Every complete final Sacha strategy must include a final section named exactly:
+
+## Escouade Production Brief
+
+This section is the handoff that lets Escouade prefill its production setup without making the user copy and paste parameters manually.
+
+Include a short user-readable summary, then include one valid JSON code block using this exact shape:
+
+```json
+{
+  "batch_name": "Short descriptive batch name",
+  "member_type": "image_post",
+  "source_type": "Sacha Theme",
+  "source_label": "Specific theme, series, weekly plan, content idea, or custom topic",
+  "filters": {
+    "source_type": "Sacha Theme",
+    "source_label": "Specific theme, series, weekly plan, content idea, or custom topic",
+    "platforms": ["Instagram"],
+    "primary_platform": "Instagram",
+    "objective": "Lead Generation",
+    "content_style": ["Premium"],
+    "quantity": 10,
+    "cta_preference": "Soft CTA",
+    "language": "Use brand default",
+    "interaction_style": "Social Media Manager Mode",
+    "special_instructions": "Production direction Escouade should follow.",
+    "format_filters": {}
+  },
+  "message": "One clear instruction Escouade can use when generating the first batch."
+}
+```
+
+Rules:
+- Use only one member_type: carrousel, reel, image_post, stories, or text_post.
+- Choose the member_type that best fits the strategy and production readiness.
+- Use Escouade's exact source_type options when possible: Sacha Series, Sacha Theme, Sacha Weekly Plan, Sacha Content Idea, Custom Topic, Selected Reference.
+- Use Escouade's practical platform language: Instagram, Facebook, LinkedIn, TikTok, YouTube Shorts, or Multi-platform.
+- Keep quantity realistic for the user's capacity. Prefer 5, 10, 15, 20, or 30.
+- Put member-specific settings in format_filters only when useful.
+- Do not tell the user to copy this manually. The app will use it as saved handoff context.
 
 ## Final Strategy Output Format
 
@@ -363,6 +407,7 @@ Supported target keys:
 - cta_direction_map
 - repurposing_opportunities
 - production_readiness_assessment
+- escouade_production_brief
 
 Patch responses should still be useful and readable to the user.
 

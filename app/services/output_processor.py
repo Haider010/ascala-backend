@@ -6,6 +6,7 @@ from typing import Any
 from app.core.logging import get_logger
 from app.db.schema import ensure_agent_outputs_tables
 from app.db.session import db_connection
+from app.services.escouade_brief import extract_escouade_brief
 
 logger = get_logger()
 
@@ -133,6 +134,7 @@ def target_label(target_path: str) -> str:
         "cta_direction_map": "CTA Direction Map",
         "repurposing_opportunities": "Repurposing Opportunities",
         "production_readiness_assessment": "Production Readiness Assessment",
+        "escouade_production_brief": "Escouade Production Brief",
     }
     key = target_path.split(".")[-1]
     return labels.get(key, key.replace("_", " ").title())
@@ -188,12 +190,16 @@ def parse_markdown_sections(markdown: str) -> dict:
 
 
 def build_structured_output(markdown: str, output_type: str | None = None) -> dict:
-    return {
+    structured_output = {
         "output_type": output_type,
         "document_markdown": markdown,
         "sections": parse_markdown_sections(markdown),
         "patches": [],
     }
+    escouade_brief = extract_escouade_brief(markdown)
+    if escouade_brief:
+        structured_output["escouade_brief"] = escouade_brief
+    return structured_output
 
 
 def find_markdown_section_bounds(markdown: str, label: str) -> tuple[int, int] | None:
@@ -332,6 +338,11 @@ def apply_output_patch(
             updated_markdown = apply_markdown_patch(existing_markdown, target, patch_markdown, mode)
             structured_output["document_markdown"] = updated_markdown
             structured_output["sections"] = parse_markdown_sections(updated_markdown)
+            escouade_brief = extract_escouade_brief(updated_markdown)
+            if escouade_brief:
+                structured_output["escouade_brief"] = escouade_brief
+            else:
+                structured_output.pop("escouade_brief", None)
             set_nested_value(structured_output, target, patch_markdown, mode)
             structured_output.setdefault("patches", []).append({
                 "target": target,

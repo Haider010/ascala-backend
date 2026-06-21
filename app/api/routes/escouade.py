@@ -14,7 +14,15 @@ from app.escouade.schemas.common import (
     ItemActionRequest,
     ReviseRequest,
 )
-from app.escouade.service import approve_items, get_batch_or_404, handle_command, reopen_items, require_location_id, serialize_batch
+from app.escouade.service import (
+    approve_items,
+    get_batch_or_404,
+    handle_command,
+    load_sacha_production_brief,
+    reopen_items,
+    require_location_id,
+    serialize_batch,
+)
 from app.services.workflow import build_workflow_status
 
 router = APIRouter(prefix="/escouade", tags=["escouade"])
@@ -22,6 +30,14 @@ router = APIRouter(prefix="/escouade", tags=["escouade"])
 
 def get_session_context(authorization: str | None) -> dict:
     return verify_app_session(get_authorization_token(authorization))
+
+
+@router.get("/brief")
+async def get_sacha_brief(authorization: str | None = Header(default=None)):
+    session_context = get_session_context(authorization)
+    location_id = require_location_id(session_context)
+    with sqlalchemy_session() as db:
+        return load_sacha_production_brief(db, location_id)
 
 
 @router.post("/batch/generate", response_model=EscouadeOperationResponse)

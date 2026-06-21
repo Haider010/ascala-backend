@@ -16,6 +16,7 @@ from app.escouade.csv import build_items_csv
 from app.escouade.models import EscouadeBatch, EscouadeItem
 from app.escouade.schemas.common import EscouadeBatchFilters
 from app.escouade.schemas.member_outputs import MEMBER_ITEM_SCHEMAS, MEMBER_OUTPUT_SCHEMAS
+from app.services.escouade_brief import extract_escouade_brief
 from app.services.token_usage import record_token_usage
 
 PROMPT_DIR = Path(__file__).with_name("prompts")
@@ -171,6 +172,32 @@ def load_knowledge_context(db: Session, location_id: str) -> dict[str, Any]:
         }
 
     return context
+
+
+def load_sacha_production_brief(db: Session, location_id: str) -> dict[str, Any]:
+    row = db.execute(
+        text("""
+            SELECT final_output, structured_output, updated_at
+            FROM sacha_outputs
+            WHERE location_id = :location_id
+            LIMIT 1
+        """),
+        {"location_id": location_id},
+    ).mappings().first()
+
+    if not row:
+        return {"brief": None, "updatedAt": None, "source": "sacha"}
+
+    structured_output = row.get("structured_output") or {}
+    brief = structured_output.get("escouade_brief") if isinstance(structured_output, dict) else None
+    if not brief:
+        brief = extract_escouade_brief(row.get("final_output") or "")
+
+    return {
+        "brief": brief or None,
+        "updatedAt": str(row.get("updated_at")) if row.get("updated_at") else None,
+        "source": "sacha",
+    }
 
 
 def build_compact_summary(final_output: str, structured_output: dict) -> dict[str, Any]:
