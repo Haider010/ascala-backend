@@ -101,7 +101,7 @@ def quality_feedback(state: EscouadeState) -> EscouadeState:
     elif state.get("action") == "generate":
         state["message"] = "Batch generated and saved as drafts."
     elif state.get("action") == "revise":
-        state["message"] = "Editable items revised and saved."
+        state["message"] = "Editable items revised and marked as revised."
     return state
 
 

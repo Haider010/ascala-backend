@@ -19,7 +19,7 @@ from app.escouade.schemas.member_outputs import MEMBER_ITEM_SCHEMAS, MEMBER_OUTP
 from app.services.token_usage import record_token_usage
 
 PROMPT_DIR = Path(__file__).with_name("prompts")
-EDITABLE_STATUSES = {"draft", "needs_revision"}
+EDITABLE_STATUSES = {"draft", "needs_revision", "revised"}
 LOCKED_STATUSES = {"approved", "exported"}
 
 
@@ -102,7 +102,7 @@ def preview_item(item: EscouadeItem) -> dict[str, Any]:
 
 
 def build_batch_dashboard(batch: EscouadeBatch) -> dict[str, Any]:
-    counts = {"draft": 0, "needs_revision": 0, "approved": 0, "exported": 0}
+    counts = {"draft": 0, "needs_revision": 0, "revised": 0, "approved": 0, "exported": 0}
     for item in batch.items:
         counts[item.status] = counts.get(item.status, 0) + 1
 
@@ -501,7 +501,7 @@ def revise_items(
         if not updated_content:
             continue
         item.content = updated_content
-        item.status = "needs_revision"
+        item.status = "revised"
         item.version += 1
 
     batch.quality_note = generated.quality_note or batch.quality_note
@@ -519,7 +519,7 @@ def approve_items(db: Session, location_id: str, batch_id: UUID, item_ids: list[
         )
     ).all()
     for item in items:
-        if item.status in {"draft", "needs_revision"}:
+        if item.status in EDITABLE_STATUSES:
             item.status = "approved"
     db.flush()
     return get_batch_or_404(db, batch.id, location_id)
@@ -622,11 +622,11 @@ def handle_command(
     revise_terms = ("revise", "regenerate", "rewrite", "stronger", "more", "less", "make")
     if any(term in lower for term in revise_terms):
         if not item_ids:
-            raise HTTPException(status_code=400, detail="Tell Escouade which draft item IDs to revise, or say all drafts.")
+            raise HTTPException(status_code=400, detail="Tell Escouade which editable item IDs to revise, or say all editable items.")
         batch, _locked = revise_items(db, location_id, usage_context, batch_id, item_ids, message, conversation_history)
-        return batch, batch.quality_note or "Editable items revised and saved.", None
+        return batch, batch.quality_note or "Editable items revised and marked as revised.", None
 
     raise HTTPException(
         status_code=400,
-        detail="I can approve, reopen, revise, regenerate, or export. Include item IDs like IMG-001 or say all drafts.",
+        detail="I can approve, reopen, revise, regenerate, or export. Include item IDs like IMG-001 or say all editable items.",
     )

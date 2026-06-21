@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 MemberType = Literal["carrousel", "reel", "image_post", "stories", "text_post"]
-ItemStatus = Literal["draft", "needs_revision", "approved", "exported"]
+ItemStatus = Literal["draft", "needs_revision", "revised", "approved", "exported"]
 
 
 class EscouadeBatchFilters(BaseModel):
