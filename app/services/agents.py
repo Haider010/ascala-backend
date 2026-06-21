@@ -237,7 +237,7 @@ def forward_agent_chat(session: dict, agent_id: str, message: str, session_id: s
             "upstreamContextText": upstream_context_text,
             "hasUpstreamContext": bool(upstream_context),
         },
-        timeout=90,
+        timeout=settings.agent_timeout_seconds,
     )
 
     content_type = response.headers.get("content-type", "")

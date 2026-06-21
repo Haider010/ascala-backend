@@ -35,7 +35,12 @@ def build_chat_llm(model: str):
     settings = get_settings()
     if not settings.openai_api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured.")
-    return ChatOpenAI(model=model, api_key=settings.openai_api_key, temperature=0.6)
+    return ChatOpenAI(
+        model=model,
+        api_key=settings.openai_api_key,
+        temperature=0.6,
+        timeout=settings.agent_timeout_seconds,
+    )
 
 
 def validate_agent_context(session: dict[str, Any], agent_id: str, provided_session_id: str | None = None) -> tuple[str, list[dict[str, Any]]]:

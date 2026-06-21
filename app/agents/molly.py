@@ -90,7 +90,12 @@ def build_llm():
     settings = get_settings()
     if not settings.openai_api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured.")
-    return ChatOpenAI(model=settings.molly_model, api_key=settings.openai_api_key, temperature=0.6)
+    return ChatOpenAI(
+        model=settings.molly_model,
+        api_key=settings.openai_api_key,
+        temperature=0.6,
+        timeout=settings.agent_timeout_seconds,
+    )
 
 
 def db_message(role: Literal["user", "assistant"], content: str) -> dict[str, Any]:

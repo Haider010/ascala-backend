@@ -27,6 +27,7 @@ class Settings:
     log_level: str
     db_pool_min_connections: int = 1
     db_pool_max_connections: int = 5
+    agent_timeout_seconds: int = 600
     session_ttl_seconds: int = 60 * 60 * 8
     oauth_redirect_url: str = "https://app.gohighlevel.com"
     oauth_token_url: str = "https://services.leadconnectorhq.com/oauth/token"
@@ -143,6 +144,7 @@ def get_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         db_pool_min_connections=_env_int("DB_POOL_MIN_CONNECTIONS", 1),
         db_pool_max_connections=_env_int("DB_POOL_MAX_CONNECTIONS", 5),
+        agent_timeout_seconds=_env_int("AGENT_TIMEOUT_SECONDS", 600),
         direct_dev_session_enabled=_env_bool("DIRECT_DEV_SESSION_ENABLED"),
         direct_dev_account=os.getenv("DIRECT_DEV_ACCOUNT", "default").strip().lower() or "default",
         direct_dev_login_username=os.getenv("DIRECT_DEV_LOGIN_USERNAME"),
