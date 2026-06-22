@@ -16,7 +16,7 @@ from app.escouade.csv import build_items_csv
 from app.escouade.models import EscouadeBatch, EscouadeItem
 from app.escouade.schemas.common import EscouadeBatchFilters
 from app.escouade.schemas.member_outputs import MEMBER_ITEM_SCHEMAS, MEMBER_OUTPUT_SCHEMAS
-from app.services.escouade_brief import extract_escouade_brief
+from app.services.escouade_brief import extract_escouade_brief, extract_escouade_production_menu
 from app.services.token_usage import record_token_usage
 
 PROMPT_DIR = Path(__file__).with_name("prompts")
@@ -190,11 +190,15 @@ def load_sacha_production_brief(db: Session, location_id: str) -> dict[str, Any]
 
     structured_output = row.get("structured_output") or {}
     brief = structured_output.get("escouade_brief") if isinstance(structured_output, dict) else None
+    menu = structured_output.get("escouade_production_menu") if isinstance(structured_output, dict) else None
     if not brief:
         brief = extract_escouade_brief(row.get("final_output") or "")
+    if not menu:
+        menu = extract_escouade_production_menu(row.get("final_output") or "")
 
     return {
         "brief": brief or None,
+        "menu": menu or [],
         "updatedAt": str(row.get("updated_at")) if row.get("updated_at") else None,
         "source": "sacha",
     }

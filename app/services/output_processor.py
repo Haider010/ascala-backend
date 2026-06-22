@@ -6,7 +6,7 @@ from typing import Any
 from app.core.logging import get_logger
 from app.db.schema import ensure_agent_outputs_tables
 from app.db.session import db_connection
-from app.services.escouade_brief import extract_escouade_brief
+from app.services.escouade_brief import extract_escouade_brief, extract_escouade_production_menu
 
 logger = get_logger()
 
@@ -135,6 +135,7 @@ def target_label(target_path: str) -> str:
         "repurposing_opportunities": "Repurposing Opportunities",
         "production_readiness_assessment": "Production Readiness Assessment",
         "escouade_production_brief": "Escouade Production Brief",
+        "escouade_production_menu": "Escouade Production Menu",
     }
     key = target_path.split(".")[-1]
     return labels.get(key, key.replace("_", " ").title())
@@ -199,6 +200,11 @@ def build_structured_output(markdown: str, output_type: str | None = None) -> di
     escouade_brief = extract_escouade_brief(markdown)
     if escouade_brief:
         structured_output["escouade_brief"] = escouade_brief
+    escouade_menu = extract_escouade_production_menu(markdown)
+    if escouade_menu:
+        structured_output["escouade_production_menu"] = escouade_menu
+        if not structured_output.get("escouade_brief") and escouade_menu[0].get("brief"):
+            structured_output["escouade_brief"] = escouade_menu[0]["brief"]
     return structured_output
 
 
@@ -343,6 +349,13 @@ def apply_output_patch(
                 structured_output["escouade_brief"] = escouade_brief
             else:
                 structured_output.pop("escouade_brief", None)
+            escouade_menu = extract_escouade_production_menu(updated_markdown)
+            if escouade_menu:
+                structured_output["escouade_production_menu"] = escouade_menu
+                if not structured_output.get("escouade_brief") and escouade_menu[0].get("brief"):
+                    structured_output["escouade_brief"] = escouade_menu[0]["brief"]
+            else:
+                structured_output.pop("escouade_production_menu", None)
             set_nested_value(structured_output, target, patch_markdown, mode)
             structured_output.setdefault("patches", []).append({
                 "target": target,
