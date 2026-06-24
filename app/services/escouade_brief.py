@@ -75,6 +75,10 @@ QUANTITY_OPTIONS = [5, 10, 15, 20, 30]
 
 SECTION_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
 JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*([\[{][\s\S]*?[\]}])\s*```", re.IGNORECASE)
+MACHINE_MENU_PATTERN = re.compile(
+    r"<!--\s*ASCALA_ESCOUADE_MENU_START\s*-->\s*(?P<body>.*?)\s*<!--\s*ASCALA_ESCOUADE_MENU_END\s*-->",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def _normalize_text(value: Any) -> str:
@@ -390,6 +394,13 @@ def normalize_production_menu(raw: dict[str, Any] | list[Any] | None) -> list[di
 
 
 def extract_escouade_production_menu(markdown: str) -> list[dict[str, Any]]:
+    machine_match = MACHINE_MENU_PATTERN.search(markdown or "")
+    if machine_match:
+        raw = _extract_json(machine_match.group("body"))
+        menu = normalize_production_menu(raw)
+        if menu:
+            return menu
+
     section = _extract_section(markdown, ["escouade", "production", "menu"])
     raw = _extract_json(section)
     menu = normalize_production_menu(raw)
@@ -428,6 +439,12 @@ def extract_escouade_brief(markdown: str) -> dict[str, Any] | None:
         brief = normalize_escouade_brief(raw)
         if brief:
             return brief
+
+    machine_match = MACHINE_MENU_PATTERN.search(markdown or "")
+    if machine_match:
+        menu = normalize_production_menu(_extract_json(machine_match.group("body")))
+        if menu:
+            return menu[0].get("brief")
 
     menu = normalize_production_menu(_extract_json(_extract_section(markdown, ["escouade", "production", "menu"])))
     if menu:
