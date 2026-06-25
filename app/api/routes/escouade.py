@@ -10,18 +10,29 @@ from app.escouade.schemas.common import (
     BatchGenerateRequest,
     BatchResponse,
     CommandRequest,
+    EscouadeChatMessageCreateRequest,
+    EscouadeChatMessageResponse,
+    EscouadeChatThreadResponse,
     EscouadeOperationResponse,
     ItemActionRequest,
     ReviseRequest,
+    SetupParseRequest,
+    SetupUpdateResponse,
 )
 from app.escouade.service import (
     approve_items,
+    create_chat_message,
     get_batch_or_404,
+    get_latest_batch,
     handle_command,
+    list_batches,
+    list_chat_messages,
     load_sacha_production_brief,
+    parse_setup_instruction,
     reopen_items,
     require_location_id,
     serialize_batch,
+    serialize_chat_message,
 )
 from app.services.workflow import build_workflow_status
 
@@ -38,6 +49,55 @@ async def get_sacha_brief(authorization: str | None = Header(default=None)):
     location_id = require_location_id(session_context)
     with sqlalchemy_session() as db:
         return load_sacha_production_brief(db, location_id)
+
+
+@router.get("/chat", response_model=EscouadeChatThreadResponse)
+async def get_escouade_chat(
+    authorization: str | None = Header(default=None),
+):
+    session_context = get_session_context(authorization)
+    location_id = require_location_id(session_context)
+    with sqlalchemy_session() as db:
+        messages = list_chat_messages(db, location_id)
+        return {"messages": [serialize_chat_message(message) for message in messages]}
+
+
+@router.post("/chat/message", response_model=EscouadeChatMessageResponse)
+async def save_escouade_chat_message(
+    payload: EscouadeChatMessageCreateRequest,
+    authorization: str | None = Header(default=None),
+):
+    session_context = get_session_context(authorization)
+    location_id = require_location_id(session_context)
+    with sqlalchemy_session() as db:
+        message = create_chat_message(
+            db,
+            location_id,
+            role=payload.role,
+            content=payload.content,
+            metadata=payload.metadata,
+        )
+        db.commit()
+        return serialize_chat_message(message)
+
+
+@router.post("/setup/parse", response_model=SetupUpdateResponse)
+async def parse_setup(payload: SetupParseRequest, authorization: str | None = Header(default=None)):
+    session_context = get_session_context(authorization)
+    location_id = require_location_id(session_context)
+    with sqlalchemy_session() as db:
+        sacha_brief_payload = load_sacha_production_brief(db, location_id)
+    return parse_setup_instruction(
+        instruction=payload.instruction,
+        current_setup=payload.current_setup,
+        conversation_history=payload.conversation_history,
+        production_menu=sacha_brief_payload.get("menu") or [],
+        usage_context={
+            "activeLocation": location_id,
+            "companyId": session_context.get("companyId"),
+            "userId": session_context.get("userId"),
+        },
+    )
 
 
 @router.post("/batch/generate", response_model=EscouadeOperationResponse)
@@ -160,6 +220,45 @@ async def export_batch_csv(batch_id: UUID, authorization: str | None = Header(de
             "X-Workflow-Status": json.dumps(build_workflow_status(location_id)),
         },
     )
+
+
+@router.get("/batch/latest")
+async def get_latest_escouade_batch(authorization: str | None = Header(default=None)):
+    session_context = get_session_context(authorization)
+    location_id = require_location_id(session_context)
+    with sqlalchemy_session() as db:
+        batch = get_latest_batch(db, location_id)
+        return {"batch": serialize_batch(batch) if batch else None}
+
+
+@router.get("/batch/history")
+async def get_escouade_batch_history(limit: int = 30, authorization: str | None = Header(default=None)):
+    session_context = get_session_context(authorization)
+    location_id = require_location_id(session_context)
+    with sqlalchemy_session() as db:
+        batches = list_batches(db, location_id, limit=limit)
+        return {
+            "batches": [
+                {
+                    "id": str(batch.id),
+                    "member_type": batch.member_type,
+                    "batch_name": batch.batch_name,
+                    "source_type": batch.source_type,
+                    "source_label": batch.source_label,
+                    "status": batch.status,
+                    "created_at": batch.created_at,
+                    "updated_at": batch.updated_at,
+                    "dashboard": serialize_batch(batch).get("dashboard", {}),
+                    "production_table": {
+                        "columns_count": len(batch.production_table.columns or []) if batch.production_table else 0,
+                        "rows_count": len(batch.production_rows or []),
+                        "export_format": batch.production_table.export_format if batch.production_table else None,
+                        "version": batch.production_table.version if batch.production_table else None,
+                    },
+                }
+                for batch in batches
+            ]
+        }
 
 
 @router.get("/batch/{batch_id}", response_model=BatchResponse)

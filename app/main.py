@@ -7,6 +7,7 @@ from app.core.logging import configure_logging, get_logger
 from app.db.schema import (
     ensure_agent_outputs_tables,
     ensure_brandboard_outputs_table,
+    ensure_escouade_chat_messages_table,
     ensure_installed_locations_table,
     ensure_n8n_chat_histories_metadata,
     ensure_token_usage_table,
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
                     ensure_n8n_chat_histories_metadata(cursor)
                     ensure_agent_outputs_tables(cursor)
                     ensure_brandboard_outputs_table(cursor)
+                    ensure_escouade_chat_messages_table(cursor)
                     ensure_token_usage_table(cursor)
                     conn.commit()
                 finally:

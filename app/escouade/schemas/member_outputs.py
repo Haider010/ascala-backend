@@ -3,6 +3,14 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class ProductionColumn(BaseModel):
+    key: str = Field(..., description="Stable machine key used in CSV export, such as headline or slide_1_body.")
+    label: str = Field(..., description="Human-readable column label.")
+    type: str = Field(default="text", description="text, long_text, media_placeholder, hashtags, cta, or metadata.")
+    required: bool = False
+    locked: bool = False
+
+
 class BaseContentItem(BaseModel):
     post_id: str = Field(..., description="Stable short ID such as CAR-001, REEL-001, IMG-001.")
     platform: str
@@ -10,6 +18,10 @@ class BaseContentItem(BaseModel):
     content_style: str
     cta: str | None = None
     strategic_note: str | None = None
+    table_row: dict[str, str] = Field(
+        default_factory=dict,
+        description="CSV-ready production row. Keys must match production_columns keys.",
+    )
 
 
 class CarouselSlide(BaseModel):
@@ -70,26 +82,31 @@ class TextPostItem(BaseContentItem):
 
 
 class CarouselBatchOutput(BaseModel):
+    production_columns: list[ProductionColumn] = Field(default_factory=list)
     items: list[CarouselItem]
     quality_note: str | None = None
 
 
 class ReelBatchOutput(BaseModel):
+    production_columns: list[ProductionColumn] = Field(default_factory=list)
     items: list[ReelItem]
     quality_note: str | None = None
 
 
 class ImagePostBatchOutput(BaseModel):
+    production_columns: list[ProductionColumn] = Field(default_factory=list)
     items: list[ImagePostItem]
     quality_note: str | None = None
 
 
 class StoriesBatchOutput(BaseModel):
+    production_columns: list[ProductionColumn] = Field(default_factory=list)
     items: list[StoriesItem]
     quality_note: str | None = None
 
 
 class TextPostBatchOutput(BaseModel):
+    production_columns: list[ProductionColumn] = Field(default_factory=list)
     items: list[TextPostItem]
     quality_note: str | None = None
 

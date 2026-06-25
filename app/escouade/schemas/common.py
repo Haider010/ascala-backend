@@ -22,6 +22,11 @@ class EscouadeBatchFilters(BaseModel):
     reference_mode: list[str] = Field(default_factory=list)
     special_instructions: str | None = None
     format_filters: dict[str, Any] = Field(default_factory=dict)
+    output_target: str | None = None
+    production_columns: list[dict[str, Any]] = Field(default_factory=list)
+    fixed_fields: dict[str, Any] = Field(default_factory=dict)
+    variable_fields: list[str] = Field(default_factory=list)
+    media_placeholders: list[str] = Field(default_factory=list)
 
 
 class BatchGenerateRequest(BaseModel):
@@ -52,6 +57,42 @@ class CommandRequest(BaseModel):
     conversation_history: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class SetupParseRequest(BaseModel):
+    instruction: str
+    current_setup: dict[str, Any] = Field(default_factory=dict)
+    conversation_history: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SetupUpdateResponse(BaseModel):
+    updates: dict[str, Any] = Field(default_factory=dict)
+    updated_fields: list[str] = Field(default_factory=list)
+    matched_brief_id: str | None = None
+    matched_brief_title: str | None = None
+    matched_brief: dict[str, Any] | None = None
+    message: str = "Setup updated."
+
+
+class EscouadeChatMessageCreateRequest(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class EscouadeChatMessageResponse(BaseModel):
+    id: UUID
+    location_id: str
+    role: str
+    content: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EscouadeChatThreadResponse(BaseModel):
+    messages: list[EscouadeChatMessageResponse] = Field(default_factory=list)
+
+
 class EscouadeItemResponse(BaseModel):
     id: UUID
     batch_id: UUID
@@ -66,6 +107,14 @@ class EscouadeItemResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class EscouadeProductionTableResponse(BaseModel):
+    id: UUID | None = None
+    columns: list[dict[str, Any]] = Field(default_factory=list)
+    export_format: str = "csv"
+    version: int = 1
+    rows: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class BatchResponse(BaseModel):
     id: UUID
     location_id: str
@@ -78,6 +127,7 @@ class BatchResponse(BaseModel):
     strategy_review: dict[str, Any] = Field(default_factory=dict)
     quality_note: str | None = None
     dashboard: dict[str, Any] = Field(default_factory=dict)
+    production_table: EscouadeProductionTableResponse | None = None
     items: list[EscouadeItemResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

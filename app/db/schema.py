@@ -143,6 +143,29 @@ def ensure_brandboard_outputs_table(cursor) -> None:
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_brandboard_outputs_location_id_unique ON brandboard_outputs (location_id)")
 
 
+def ensure_escouade_chat_messages_table(cursor) -> None:
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS escouade_chat_messages (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            location_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+    cursor.execute("ALTER TABLE escouade_chat_messages ADD COLUMN IF NOT EXISTS location_id TEXT")
+    cursor.execute("ALTER TABLE escouade_chat_messages ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'assistant'")
+    cursor.execute("ALTER TABLE escouade_chat_messages ADD COLUMN IF NOT EXISTS content TEXT NOT NULL DEFAULT ''")
+    cursor.execute("ALTER TABLE escouade_chat_messages ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb")
+    cursor.execute("ALTER TABLE escouade_chat_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
+    cursor.execute("DROP INDEX IF EXISTS idx_escouade_chat_location_thread")
+    cursor.execute("DROP INDEX IF EXISTS idx_escouade_chat_batch_created")
+    cursor.execute("ALTER TABLE escouade_chat_messages DROP COLUMN IF EXISTS batch_id")
+    cursor.execute("ALTER TABLE escouade_chat_messages DROP COLUMN IF EXISTS thread_type")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_escouade_chat_location_created ON escouade_chat_messages (location_id, created_at)")
+
+
 def ensure_token_usage_table(cursor) -> None:
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ascala_token_usage_monthly (

@@ -1,4 +1,9 @@
-from app.db.schema import ensure_agent_outputs_tables, ensure_brandboard_outputs_table, ensure_n8n_chat_histories_metadata
+from app.db.schema import (
+    ensure_agent_outputs_tables,
+    ensure_brandboard_outputs_table,
+    ensure_escouade_chat_messages_table,
+    ensure_n8n_chat_histories_metadata,
+)
 
 
 CHAT_AGENT_IDS = {"molly", "brandy", "sacha"}
@@ -30,6 +35,7 @@ def clear_agent_output(cursor, location_id: str, agent_id: str) -> dict[str, int
 
     ensure_agent_outputs_tables(cursor)
     ensure_brandboard_outputs_table(cursor)
+    ensure_escouade_chat_messages_table(cursor)
     ensure_n8n_chat_histories_metadata(cursor)
 
     deleted = {}
@@ -43,6 +49,15 @@ def clear_agent_output(cursor, location_id: str, agent_id: str) -> dict[str, int
         deleted["n8n_chat_histories"] = _delete_agent_chat_history(cursor, location_id, agent_id)
 
     if agent_id == "escouade":
+        cursor.execute("DELETE FROM escouade_chat_messages WHERE location_id = %s", (location_id,))
+        deleted["escouade_chat_messages"] = cursor.rowcount
+
+        cursor.execute("DELETE FROM escouade_production_rows WHERE location_id = %s", (location_id,))
+        deleted["escouade_production_rows"] = cursor.rowcount
+
+        cursor.execute("DELETE FROM escouade_production_tables WHERE location_id = %s", (location_id,))
+        deleted["escouade_production_tables"] = cursor.rowcount
+
         cursor.execute("DELETE FROM escouade_items WHERE location_id = %s", (location_id,))
         deleted["escouade_items"] = cursor.rowcount
 
@@ -58,6 +73,7 @@ def clear_agent_output(cursor, location_id: str, agent_id: str) -> dict[str, int
 def clear_account_outputs(cursor, location_id: str) -> dict[str, int]:
     ensure_agent_outputs_tables(cursor)
     ensure_brandboard_outputs_table(cursor)
+    ensure_escouade_chat_messages_table(cursor)
     ensure_n8n_chat_histories_metadata(cursor)
 
     deleted = {}
@@ -68,6 +84,15 @@ def clear_account_outputs(cursor, location_id: str) -> dict[str, int]:
 
     cursor.execute("DELETE FROM brandboard_outputs WHERE location_id = %s", (location_id,))
     deleted["brandboard_outputs"] = cursor.rowcount
+
+    cursor.execute("DELETE FROM escouade_chat_messages WHERE location_id = %s", (location_id,))
+    deleted["escouade_chat_messages"] = cursor.rowcount
+
+    cursor.execute("DELETE FROM escouade_production_rows WHERE location_id = %s", (location_id,))
+    deleted["escouade_production_rows"] = cursor.rowcount
+
+    cursor.execute("DELETE FROM escouade_production_tables WHERE location_id = %s", (location_id,))
+    deleted["escouade_production_tables"] = cursor.rowcount
 
     cursor.execute("DELETE FROM escouade_items WHERE location_id = %s", (location_id,))
     deleted["escouade_items"] = cursor.rowcount
